@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
+import { getOrCreateAppSettings } from "@/lib/settings/get";
 import { db } from "@/db/client";
 import { projectDocuments, projects } from "@/db/schema";
 import { ProjectDocumentsSection } from "./project-documents-section";
@@ -28,6 +29,10 @@ export default async function ProjectDetailPage({
     .where(eq(projectDocuments.projectId, id))
     .orderBy(desc(projectDocuments.createdAt));
 
+  // Notification lead time (phases-plan 6.1), applied here to flag
+  // invoices due soon — see lib/documents/due-soon.ts.
+  const settings = await getOrCreateAppSettings();
+
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
       <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6">
@@ -51,7 +56,11 @@ export default async function ProjectDetailPage({
 
         <MilestoneStatus project={project} documents={documents} />
 
-        <ProjectDocumentsSection project={project} initialDocuments={documents} />
+        <ProjectDocumentsSection
+          project={project}
+          initialDocuments={documents}
+          notificationDaysBefore={settings.notificationDaysBefore}
+        />
       </div>
     </main>
   );

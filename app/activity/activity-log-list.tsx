@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { actionLabel, actorName, formatTimestamp, formatDetail } from "@/lib/activity/format";
 
 export type ActivityEntry = {
   id: string;
@@ -49,37 +50,8 @@ const ACTIONS = [
   "invoice.marked_unpaid",
   "ar.created",
   "ar.edited",
+  "settings.notification_days_updated",
 ] as const;
-
-function actionLabel(action: string): string {
-  // "expense.deleted" -> "Expense deleted"
-  const [, verb] = action.split(".");
-  const noun = action.split(".")[0];
-  const words = `${noun} ${verb ?? ""}`.replace(/_/g, " ");
-  return words.charAt(0).toUpperCase() + words.slice(1);
-}
-
-function actorName(entry: ActivityEntry): string {
-  if (!entry.actorFirstName) return "System";
-  return `${entry.actorFirstName} ${entry.actorLastName ?? ""}`.trim();
-}
-
-function formatTimestamp(value: string | Date): string {
-  return new Date(value).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function formatDetail(detail: unknown): string | null {
-  if (!detail || typeof detail !== "object") return null;
-  const entries = Object.entries(detail as Record<string, unknown>);
-  if (!entries.length) return null;
-  return entries.map(([key, value]) => `${key}: ${String(value)}`).join(", ");
-}
 
 type Filters = { actor: string; action: string; from: string; to: string };
 const EMPTY_FILTERS: Filters = { actor: "", action: "", from: "", to: "" };

@@ -16,6 +16,7 @@ import {
 import type { Project, ProjectDocument } from "@/db/schema";
 import type { ArDocumentInput, InvoiceDocumentInput } from "@/lib/validation/documents";
 import { formatDocumentDate, formatPesoAmount } from "@/lib/documents/format";
+import { isInvoiceDueSoon } from "@/lib/documents/due-soon";
 import { DOCUMENT_DEFAULTS } from "@/lib/documents/defaults";
 import { DocumentForm } from "./documents/[documentId]/document-form";
 
@@ -84,9 +85,11 @@ function emptyInvoiceDefaults(project: Project): InvoiceDocumentInput & {
 export function ProjectDocumentsSection({
   project,
   initialDocuments,
+  notificationDaysBefore,
 }: {
   project: Project;
   initialDocuments: ProjectDocument[];
+  notificationDaysBefore: number;
 }) {
   const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
@@ -204,6 +207,12 @@ export function ProjectDocumentsSection({
                           {document.isPaid ? "Paid" : "Unpaid"}
                         </Badge>
                       )}
+                      {isInvoiceDueSoon({
+                        type: document.type,
+                        isPaid: document.isPaid,
+                        dueDate: document.dueDate,
+                        notificationDaysBefore,
+                      }) && <Badge variant="destructive">Due soon</Badge>}
                     </span>
                     <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
                       {document.documentDate ? formatDocumentDate(document.documentDate) : ""}

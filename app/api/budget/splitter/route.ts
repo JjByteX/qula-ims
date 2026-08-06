@@ -1,81 +1,11 @@
 import { NextResponse } from "next/server";
 import { eq, inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { budget, budgetSplits, expenses, users } from "@/db/schema";
+import { budget, budgetSplits } from "@/db/schema";
 import { budgetSplitterSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
-
-// Team members for the splitter (phases-plan 2.4) are active users —
-// pending and denied accounts aren't part of the team yet, same status
-// check used to gate other "active user" behavior (e.g. login,
-// forgot-password) elsewhere in the app.
-async function getActiveUsers() {
-  return db
-    .select({ id: users.id, firstName: users.firstName, lastName: users.lastName })
-    .from(users)
-    .where(eq(users.status, "active"));
-}
-
-async function getOrCreateBudget() {
-  const [existing] = await db.select().from(budget).limit(1);
-  if (existing) return existing;
-
-  const [created] = await db.insert(budget).values({}).returning();
-  return created;
-}
-
-// Computes each active user's dollar share of the remaining budget.
-// Users with a stored override use that percentage; everyone else splits
-// whatever percentage is left over equally. Recalculated on every read
-// (phases-plan 2.4 "recalculate... when budget or team changes") instead
-// of being cached, so a new hire or a fresh expense is reflected
-// immediately without a separate recompute step.
-async function computeSplits() {
-  const current = await getOrCreateBudget();
-  const activeUsers = await getActiveUsers();
-
-  const expenseRows = await db.select({ amount: expenses.amount }).from(expenses);
-  const expensesTotal = expenseRows.reduce((sum, row) => sum + Number(row.amount), 0);
-  const remaining = Number(current.allocatedFunds) - expensesTotal;
-
-  const overrides = activeUsers.length
-    ? await db
-        .select()
-        .from(budgetSplits)
-        .where(
-          inArray(
-            budgetSplits.userId,
-            activeUsers.map((u) => u.id),
-          ),
-        )
-    : [];
-  const overrideByUserId = new Map(overrides.map((o) => [o.userId, o]));
-
-  const overriddenPercentageTotal = overrides.reduce(
-    (sum, o) => sum + (o.percentage ? Number(o.percentage) : 0),
-    0,
-  );
-  const usersWithoutOverride = activeUsers.filter((u) => !overrideByUserId.get(u.id)?.percentage);
-  const equalSharePercentage = usersWithoutOverride.length
-    ? (100 - overriddenPercentageTotal) / usersWithoutOverride.length
-    : 0;
-
-  const splits = activeUsers.map((user) => {
-    const override = overrideByUserId.get(user.id);
-    const percentage = override?.percentage ? Number(override.percentage) : equalSharePercentage;
-    return {
-      userId: user.id,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      percentage,
-      isManual: !!override?.percentage,
-      amount: (remaining * percentage) / 100,
-    };
-  });
-
-  return { enabled: current.splitterEnabled, remaining, splits };
-}
+import { getOrCreateBudget, getActiveUsers, computeSplits } from "@/lib/budget/compute";
 
 // View is open to any signed-in user, same as the rest of the budget
 // module (phases-plan 2.1's "not superadmin-gated" reasoning applies
