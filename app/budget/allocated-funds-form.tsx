@@ -9,24 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { allocatedFundsSchema, type AllocatedFundsInput } from "@/lib/validation/budget";
-
-// No currency was specified anywhere in the docs (Client-Requests.md and
-// tech-stack.md are both silent on it), so this is a single constant to
-// change in one place rather than a guess baked into every display.
-export const CURRENCY_SYMBOL = "$";
-
-// Matches the numeric(14,2) column: whole-number grouping, exactly two
-// decimals — this is a display formatter only, the raw string is what's
-// actually sent to and stored by the API. Exported so the remaining
-// budget summary (phases-plan 2.3) matches this formatting exactly
-// instead of re-implementing it.
-export function formatCurrency(value: string): string {
-  const amount = Number(value);
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amount);
-}
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 
 export function AllocatedFundsForm({
   initialAllocatedFunds,

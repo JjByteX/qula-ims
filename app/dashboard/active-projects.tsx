@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
-import { CURRENCY_SYMBOL, formatCurrency } from "@/app/budget/allocated-funds-form";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 

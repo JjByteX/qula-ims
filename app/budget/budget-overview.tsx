@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from "react";
 import { Card, CardContent } from "@/components/ui/card";
-import { AllocatedFundsForm, CURRENCY_SYMBOL, formatCurrency } from "./allocated-funds-form";
+import { AllocatedFundsForm } from "./allocated-funds-form";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { ExpensesSection, type Expense } from "./expenses-section";
 import { BudgetSplitter } from "./budget-splitter";
 

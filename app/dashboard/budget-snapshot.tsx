@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CURRENCY_SYMBOL, formatCurrency } from "@/app/budget/allocated-funds-form";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { Card, CardContent } from "@/components/ui/card";
 import type { BudgetSplit } from "@/lib/budget/compute";
 

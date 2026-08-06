@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
-import { CURRENCY_SYMBOL, formatCurrency } from "./allocated-funds-form";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 
 type Split = {
   userId: string;
