@@ -1,0 +1,143 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+/* ============================================================
+   Qula IMS Design Tokens
+   Source: docs/Mandatory_Colors.md, docs/ux-ui-guidelines.md
+   ============================================================ */
+:root {
+  /* Mandatory palette (fixed hex values) */
+  --qula-gold: #e3bc51; /* Accent - sparing use: badges, key CTAs, active states */
+  --qula-cream: #f8ebd4; /* Secondary surface - cards, section backgrounds */
+  --qula-off-white: #fffcfc; /* Primary background */
+  --qula-warm-white: #fff8f4; /* Alternate background / hover surface */
+  --qula-charcoal: #221f19; /* Primary text, dark foreground */
+
+  /* Semantic mapping to shadcn tokens (60/30/10 rule) */
+  --background: var(--qula-off-white); /* 60 - dominant surface */
+  --foreground: var(--qula-charcoal);
+
+  --card: var(--qula-cream); /* 30 - secondary surface */
+  --card-foreground: var(--qula-charcoal);
+
+  --popover: var(--qula-off-white);
+  --popover-foreground: var(--qula-charcoal);
+
+  --primary: var(--qula-charcoal);
+  --primary-foreground: var(--qula-off-white);
+
+  --secondary: var(--qula-cream);
+  --secondary-foreground: var(--qula-charcoal);
+
+  --muted: var(--qula-warm-white);
+  --muted-foreground: color-mix(in srgb, var(--qula-charcoal) 60%, transparent);
+
+  --accent: var(--qula-gold); /* 10 - accent, sparing use */
+  --accent-foreground: var(--qula-charcoal);
+
+  --destructive: #b3423a;
+  --destructive-foreground: var(--qula-off-white);
+
+  --success: #4a7c59;
+  --success-foreground: var(--qula-off-white);
+
+  --border: color-mix(in srgb, var(--qula-charcoal) 12%, transparent);
+  --input: color-mix(in srgb, var(--qula-charcoal) 16%, transparent);
+  --ring: var(--qula-gold);
+
+  /* Radius tokens - only two values permitted per ux-ui-guidelines */
+  --radius-sm: 8px; /* buttons, inputs, cards, containers */
+  --radius-lg: 16px; /* modals, feature panels */
+  --radius: var(--radius-sm);
+
+  /* Spacing scale - 8px grid */
+  --space-1: 4px; /* tight spaces only: icon gaps */
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --space-5: 32px;
+  --space-6: 40px;
+  --space-7: 48px;
+  --space-8: 64px;
+  --space-9: 80px;
+  --space-10: 96px;
+
+  /* Typography scale - max 3 sizes, 4th only if structurally necessary */
+  --text-sm: 13px;
+  --text-base: 15px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+
+  /* Layout shell tokens */
+  --header-height: 64px;
+  --sidebar-width: 260px;
+  --sidebar-width-collapsed: 72px;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-gold: var(--qula-gold);
+  --color-cream: var(--qula-cream);
+  --color-off-white: var(--qula-off-white);
+  --color-warm-white: var(--qula-warm-white);
+  --color-charcoal: var(--qula-charcoal);
+
+  --radius-sm: var(--radius-sm);
+  --radius-lg: var(--radius-lg);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+}
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: var(--text-base);
+  font-weight: 400;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-weight: 600; /* Semibold only - never bold/700 per guidelines */
+}
+
+/* Visible keyboard focus - accessibility baseline */
+:focus-visible {
+  outline: 2px solid var(--qula-gold);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
