@@ -15,7 +15,7 @@ export type ActiveProjectRow = {
 
 // Active projects (phases-plan 5.2 / Client-Requests.md "Active projects
 // ... Flags any with an unpaid invoice or pending AR"). One card holding
-// the whole list, same shape as BudgetSnapshot (5.1) — this is one
+// the whole list, same shape as BudgetSection (5.1) — this is one
 // logical section, so per the card-fragmentation rule in
 // ux-ui-guidelines.md each project row lives inside the section's single
 // card rather than getting its own. The card links to /projects

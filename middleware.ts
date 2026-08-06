@@ -17,7 +17,7 @@ const SESSION_COOKIE_NAME = "auth_session";
 // superadmin-only routes specifically; everything else here just requires
 // login, matching Client-Requests.md — regular users can use the whole
 // app, only specific actions are superadmin-gated).
-const PROTECTED_PAGE_PREFIXES = ["/dashboard", "/budget", "/projects", "/activity", "/settings", "/users"];
+const PROTECTED_PAGE_PREFIXES = ["/dashboard", "/projects", "/activity", "/settings", "/users"];
 
 // API routes that are superadmin-only end to end (account creation,
 // pending-request approval/denial per Client-Requests.md). Fine-grained or
@@ -53,7 +53,6 @@ export function middleware(request: NextRequest) {
 export const config = {
   matcher: [
     "/dashboard/:path*",
-    "/budget/:path*",
     "/projects/:path*",
     "/activity/:path*",
     "/settings/:path*",

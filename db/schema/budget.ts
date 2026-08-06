@@ -4,7 +4,6 @@ import {
   timestamp,
   uuid,
   numeric,
-  boolean,
   date,
 } from "drizzle-orm/pg-core";
 import { users } from "./users";
@@ -17,7 +16,6 @@ export const budget = pgTable("budget", {
   allocatedFunds: numeric("allocated_funds", { precision: 14, scale: 2 })
     .notNull()
     .default("0"),
-  splitterEnabled: boolean("splitter_enabled").notNull().default(false),
   updatedByUserId: uuid("updated_by_user_id").references(() => users.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
@@ -34,8 +32,9 @@ export const expenses = pgTable("expenses", {
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
-// Per-person share of the budget. Equal split by default (computed at read
-// time from active user count); a row here represents a manual override.
+// Per-person share of the budget, always split across the team. Equal
+// split by default (computed at read time from active user count); a row
+// here represents a manual override.
 export const budgetSplits = pgTable("budget_splits", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")

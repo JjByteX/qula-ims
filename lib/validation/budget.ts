@@ -38,12 +38,11 @@ export type ExpenseInput = z.infer<typeof expenseSchema>;
 
 // Budget splitter (phases-plan 2.4 / Client-Requests.md "Splits the
 // budget across team members. Equal split by default, but you can
-// change it."). overrides carries only the people with a manual
-// percentage; anyone not listed falls back to an equal share of what's
-// left, computed server-side in app/api/budget/splitter/route.ts rather
-// than trusting a client-computed equal share.
+// change it."). Always on — overrides carries only the people with a
+// manual percentage; anyone not listed falls back to an equal share of
+// what's left, computed server-side in app/api/budget/splitter/route.ts
+// rather than trusting a client-computed equal share.
 export const budgetSplitterSchema = z.object({
-  enabled: z.boolean(),
   overrides: z
     .array(
       z.object({

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
-import { budget, budgetSplits } from "@/db/schema";
+import { budgetSplits } from "@/db/schema";
 import { budgetSplitterSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
@@ -18,9 +18,9 @@ export async function GET() {
   return NextResponse.json(result);
 }
 
-// Toggles the splitter on/off and replaces manual overrides
-// (phases-plan 2.4). Any signed-in user, not superadmin-only, matching
-// every other budget edit in this module.
+// Replaces manual split overrides (phases-plan 2.4). Always on — any
+// signed-in user, not superadmin-only, matching every other budget edit
+// in this module.
 export async function PATCH(request: Request) {
   const auth = await authorizeUser();
   if (!auth.ok) return auth.response;
@@ -45,11 +45,6 @@ export async function PATCH(request: Request) {
   const current = await getOrCreateBudget();
 
   await db.transaction(async (tx) => {
-    await tx
-      .update(budget)
-      .set({ splitterEnabled: parsed.data.enabled, updatedByUserId: auth.user.id, updatedAt: new Date() })
-      .where(eq(budget.id, current.id));
-
     // Overrides are fully replaced rather than diffed — the whole set
     // comes from one form submission, so upserting per-user and then
     // clearing anyone no longer in the payload is simpler and just as
@@ -78,7 +73,7 @@ export async function PATCH(request: Request) {
     action: "budget.splitter_updated",
     targetType: "budget",
     targetId: current.id,
-    detail: { enabled: parsed.data.enabled, overrideCount: parsed.data.overrides.length },
+    detail: { overrideCount: parsed.data.overrides.length },
   });
 
   const result = await computeSplits();

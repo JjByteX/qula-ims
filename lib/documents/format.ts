@@ -1,7 +1,7 @@
 // Matches the client's real templates: "July 31, 2026", not "07/31/2026"
 // or an ISO string. Parsed with the T00:00:00 suffix so the displayed
 // day never shifts due to the browser's local timezone, same reasoning
-// as budget's expenses-section.tsx.
+// as the dashboard's budget-section.tsx.
 export function formatDocumentDate(value: string): string {
   return new Date(`${value}T00:00:00`).toLocaleDateString("en-US", {
     year: "numeric",

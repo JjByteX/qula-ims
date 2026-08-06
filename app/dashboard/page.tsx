@@ -2,8 +2,8 @@ import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { computeSplits } from "@/lib/budget/compute";
 import { db } from "@/db/client";
-import { activityLog, projectDocuments, projects, users } from "@/db/schema";
-import { BudgetSnapshot } from "./budget-snapshot";
+import { activityLog, expenses, projectDocuments, projects, users } from "@/db/schema";
+import { BudgetSection } from "./budget-section";
 import { ActiveProjects, type ActiveProjectRow } from "./active-projects";
 import {
   PendingActions,
@@ -22,15 +22,20 @@ const RECENT_ACTIVITY_LIMIT = 10;
 // on auth.user.role the way e.g. app/users/pending/page.tsx does, except
 // for the one sub-section that's explicitly superadmin-only by spec (5.3).
 //
-// All four sections are built here: budget snapshot (5.1), active
-// projects (5.2), pending actions (5.3), and recent activity (5.4).
+// The budget module (phases-plan 2) lives here as one editable section
+// rather than a separate /budget page — Client-Requests.md never scopes
+// Budget as its own page, and per the card-fragmentation rule in
+// docs/ux-ui-guidelines.md the allocated funds, expenses, remaining
+// total, and split are one logical concept. Active projects (5.2),
+// pending actions (5.3), and recent activity (5.4) fill out the rest.
 // Navigation (5.5) is satisfied by each section already linking to its
 // full page — no separate component needed for that phase.
 export default async function DashboardPage() {
   const user = await requireUser();
 
-  const [snapshot, activeProjects, pendingUsers, recentActivity] = await Promise.all([
+  const [snapshot, expenseList, activeProjects, pendingUsers, recentActivity] = await Promise.all([
     computeSplits(),
+    db.select().from(expenses).orderBy(desc(expenses.date)),
     db.select().from(projects).where(eq(projects.status, "active")).orderBy(desc(projects.createdAt)),
     // Registration requests are superadmin view only (phases-plan 5.3 /
     // Client-Requests.md), so regular users never even fetch this list.
@@ -63,6 +68,12 @@ export default async function DashboardPage() {
       .orderBy(desc(activityLog.createdAt))
       .limit(RECENT_ACTIVITY_LIMIT),
   ]);
+
+  // computeSplits() already reads (and lazily creates) the single budget
+  // row internally, and returns allocatedFunds as part of its result — so
+  // this reuses that instead of a second, potentially racy query for the
+  // same row.
+  const allocatedFunds = String(snapshot.allocatedFunds);
 
   // Flags mirror the per-project logic already established on the project
   // detail page (app/projects/[id]/milestone-status.tsx): an unpaid
@@ -121,7 +132,11 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <BudgetSnapshot initialSnapshot={snapshot} />
+        <BudgetSection
+          initialAllocatedFunds={allocatedFunds}
+          initialExpenses={expenseList}
+          initialSplitterState={snapshot}
+        />
         <ActiveProjects projects={projectRows} />
         <PendingActions
           registrations={registrations}

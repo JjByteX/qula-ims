@@ -110,7 +110,6 @@ async function seedBudget() {
 
   await db.insert(schema.budget).values({
     allocatedFunds: "50000.00",
-    splitterEnabled: false,
   });
 }
 

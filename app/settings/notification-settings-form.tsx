@@ -15,8 +15,9 @@ import {
 
 // Notification settings (phases-plan 6.1 / Client-Requests.md "Set the
 // number of days before the notification"). Same view/edit-toggle shape
-// as app/budget/allocated-funds-form.tsx, since this is the same kind of
-// thing: one editable value in its own card.
+// as the allocated-funds editor in app/dashboard/budget-section.tsx,
+// since this is the same kind of thing: one editable value in its own
+// card.
 export function NotificationSettingsForm({
   initialDaysBefore,
 }: {

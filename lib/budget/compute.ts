@@ -35,12 +35,11 @@ export type BudgetSplit = {
 };
 
 // Computes each active user's dollar share of the remaining budget.
-// Users with a stored override use that percentage; everyone else splits
-// whatever percentage is left over equally. Recalculated on every read
-// (phases-plan 2.4 "recalculate... when budget or team changes") instead
-// of being cached.
+// Always on (phases-plan 2.4 / Client-Requests.md: "Splits the budget
+// across team members"). Users with a stored override use that
+// percentage; everyone else splits whatever percentage is left over
+// equally. Recalculated on every read instead of being cached.
 export async function computeSplits(): Promise<{
-  enabled: boolean;
   remaining: number;
   allocatedFunds: number;
   expensesTotal: number;
@@ -89,5 +88,5 @@ export async function computeSplits(): Promise<{
     };
   });
 
-  return { enabled: current.splitterEnabled, remaining, allocatedFunds, expensesTotal, splits };
+  return { remaining, allocatedFunds, expensesTotal, splits };
 }

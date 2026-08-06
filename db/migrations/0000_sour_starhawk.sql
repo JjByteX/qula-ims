@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS "sessions" (
 CREATE TABLE IF NOT EXISTS "budget" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"allocated_funds" numeric(14, 2) DEFAULT '0' NOT NULL,
-	"splitter_enabled" boolean DEFAULT false NOT NULL,
 	"updated_by_user_id" uuid,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL
 );

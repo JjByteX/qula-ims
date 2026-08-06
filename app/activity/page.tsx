@@ -8,7 +8,7 @@ const PAGE_SIZE = 25;
 
 // Full activity log page (phases-plan 4.3), open to any signed-in user —
 // same reasoning as app/api/activity/route.ts. First page of unfiltered
-// results is fetched directly here (same pattern as app/budget/page.tsx),
+// results is fetched directly here (same pattern as app/dashboard/page.tsx),
 // so the initial paint has real data; ActivityLogList takes over via
 // GET /api/activity for any filter or page change afterward.
 export default async function ActivityLogPage() {
