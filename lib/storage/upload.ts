@@ -80,6 +80,41 @@ export async function uploadProjectDocument(params: {
   return { key, url: getPublicUrl(key) };
 }
 
+// --- Invoice QR code image ----------------------------------------------
+// The QR code on a generated invoice is a person's own upload (e.g. an
+// InstaPay QR screenshot), not something the app generates — same 2MB
+// image-upload shape as profile pictures, just a different storage
+// prefix and no association with a user.
+
+const MAX_QR_CODE_BYTES = 2 * 1024 * 1024;
+
+const QR_CODE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export async function uploadInvoiceQrCode(params: {
+  documentId: string;
+  file: File;
+}): Promise<UploadResult> {
+  const { documentId, file } = params;
+
+  const extension = QR_CODE_TYPES[file.type];
+  if (!extension) {
+    throw new StorageValidationError(
+      `Unsupported image type "${file.type}". Allowed: JPEG, PNG, WebP.`,
+    );
+  }
+  if (file.size > MAX_QR_CODE_BYTES) {
+    throw new StorageValidationError("QR code image exceeds the 2MB limit.");
+  }
+
+  const key = `project-documents/${documentId}/qr-code/${randomUUID()}.${extension}`;
+  await putObject(key, Buffer.from(await file.arrayBuffer()), file.type);
+  return { key, url: getPublicUrl(key) };
+}
+
 // --- Shared helpers -----------------------------------------------------
 
 async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {

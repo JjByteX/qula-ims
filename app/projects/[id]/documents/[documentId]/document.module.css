@@ -1,0 +1,121 @@
+/*
+ * Deliberately NOT using the app's design tokens (Mandatory_Colors.md).
+ * These documents are meant to look like a plain printed business
+ * paper — Times New Roman, black on white, no color — matching the
+ * client's real templates exactly rather than the app's gold-accent
+ * premium look.
+ */
+
+.page {
+  background: #ffffff;
+  color: #000000;
+  font-family: "Times New Roman", Times, serif;
+  font-size: 15px;
+  line-height: 1.5;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 48px;
+}
+
+.title {
+  font-size: 28px;
+  font-weight: normal;
+  letter-spacing: 0.02em;
+  text-align: center;
+  border-bottom: 1px solid #000000;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+.metaBlock {
+  text-align: right;
+  margin-bottom: 24px;
+}
+
+.metaBlock div {
+  margin-bottom: 2px;
+}
+
+.metaLabel {
+  font-weight: normal;
+}
+
+.metaValue {
+  text-decoration: underline;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+.table td {
+  border: 1px solid #000000;
+  padding: 10px 14px;
+  vertical-align: top;
+}
+
+.table td:first-child {
+  width: 32%;
+  font-weight: normal;
+}
+
+.sectionLabel {
+  font-weight: bold;
+  margin-top: 20px;
+  margin-bottom: 6px;
+}
+
+.bodyText {
+  margin-bottom: 20px;
+}
+
+.signatureTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.signatureTable td {
+  border: 1px solid #000000;
+  padding: 14px;
+  vertical-align: top;
+  width: 50%;
+}
+
+.signatureLine {
+  margin-top: 40px;
+  border-top: 1px solid #000000;
+  padding-top: 4px;
+  width: 80%;
+}
+
+.qrBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+}
+
+.qrImage {
+  max-width: 130px;
+  max-height: 130px;
+  object-fit: contain;
+}
+
+.footerText {
+  margin-top: 24px;
+}
+
+@media print {
+  .page {
+    padding: 0;
+    max-width: none;
+  }
+
+  .noPrint {
+    display: none !important;
+  }
+}
