@@ -1,0 +1,1476 @@
+import { prisma } from "../src/db";
+import { hashPassword } from "../src/auth/password";
+import { allowedProductTypes, derivePackageType, REPORT_TIER_PRESETS } from "@fnb/core";
+import { seedDemoHistory } from "./seed-demo";
+import { generateAssetCode } from "../src/services/asset-supplier";
+import { ASSET_ITEMS, ASSET_CATEGORY_COST, ASSET_BREAKAGE } from "./asset-seed-data";
+
+const PASSWORD = "Fnb!2026"; // documented demo password for all seeded roles
+
+async function seedUsers() {
+  const passwordHash = await hashPassword(PASSWORD);
+  const users = [
+    { username: "admin", firstName: "Lourd", lastName: "Borromeo", role: "ADMIN" },
+    // The establishment's owner — hires and disables his own staff, managers
+    // included, but never sees another tenant (client req 2026-07-25).
+    { username: "owner", firstName: "Ramon", lastName: "Delgado", role: "OWNER" },
+    { username: "manager", firstName: "Maria", lastName: "Santos", role: "MANAGER" },
+    { username: "staff", firstName: "Paolo", lastName: "Reyes", role: "STAFF" },
+    { username: "accountant", firstName: "Grace", lastName: "Lim", role: "ACCOUNTANT" },
+    { username: "readonly", firstName: "Elena", lastName: "Cruz", role: "AUDIT_VIEWER" },
+  ];
+  for (const u of users) {
+    await prisma.user.upsert({
+      where: { username: u.username },
+      update: { role: u.role, status: "ACTIVE", passwordHash, firstName: u.firstName, lastName: u.lastName },
+      create: { ...u, passwordHash, email: `${u.username}@fnb-lis.local` },
+    });
+  }
+}
+
+async function seedClients() {
+  const admin = await prisma.user.findUnique({ where: { username: "admin" } });
+
+  // Subscription is mandatory at creation time (see POST /clients/full) — a
+  // Client can never exist without one through the real app. Seed them
+  // together per client so the seeded data matches that invariant instead
+  // of drifting into a "client with no package" state the UI can't produce.
+  //
+  // Modules are now atomic rows (Fix Plan Phase C) rather than a combo
+  // string — Prime is licensed for both BAR and KITCHEN; Casa Verde for
+  // KITCHEN only.
+  const prime = await upsertClientWithSubscription(
+    "Prime Hospitality Group",
+    // maxDevices 2, not the shipped default of 1: this is the demo client a dev
+    // machine points at, and `verify:mirror` registers its own "Provisioning
+    // rehearsal PC" against the REAL server under a fixed fingerprint. With one
+    // slot the rehearsal and the actual desktop install fight over it, and every
+    // re-seed strands whichever lost — see verify-mirror.mjs's own header.
+    { billingCycle: "MONTHLY", modules: ["BAR", "KITCHEN"], maxEntities: 5, maxUsers: 10, maxDevices: 2 },
+    admin?.id,
+  );
+  // Prime legitimately splits one operation into two locations — "Main Bar"
+  // (its own BAR module -> Beverage) and "Kitchen" (its own KITCHEN module ->
+  // Food). This is the real, supported "one location per module" pattern
+  // (packaging-model-fix-plan.md §1.2): each location's own LocationModule
+  // set is a strict subset of Prime's {BAR, KITCHEN} subscription ceiling.
+  const mainBar = await upsertLocationWithModules(prime.id, "Main Bar", ["BAR"]);
+  await upsertLocationWithModules(prime.id, "Kitchen", ["KITCHEN"]);
+
+  /**
+   * The dev desktop's machine, pre-registered.
+   *
+   * `front-bar-pc-fixed-0001` is the fingerprint the installed app persists in
+   * its config and reuses across reinstalls (see apps/desktop/src/config.ts —
+   * a random id generated once, deliberately NOT derived from hardware). Seeding
+   * a Device with it means `resolveDevice` recognises the machine on first login
+   * instead of registering it afresh, so repeated database rebuilds stop leaving
+   * a trail of orphan rows eating licence slots.
+   *
+   * What this does NOT do is spare the setup wizard: the desktop's stored
+   * `locationId` and session belong to the previous database, and locations are
+   * created with generated ids, so the config is stale regardless. Removing the
+   * wizard step as well would mean pinning stable ids across client, location
+   * AND device, and seeding a known DevicePin — a chain of demo fiction ending
+   * in a published PIN hash, which is not worth it.
+   *
+   * No session and no PIN is issued here: this row asserts "this machine is
+   * known", never "this machine is signed in".
+   */
+  await prisma.device.upsert({
+    where: { fingerprint: "front-bar-pc-fixed-0001" },
+    update: { clientId: prime.id, locationId: mainBar.id, status: "ACTIVE" },
+    create: {
+      clientId: prime.id,
+      locationId: mainBar.id,
+      name: "Front bar PC",
+      fingerprint: "front-bar-pc-fixed-0001",
+      status: "ACTIVE",
+    },
+  });
+
+  const casa = await upsertClientWithSubscription(
+    "Casa Verde Restaurant",
+    { billingCycle: "MONTHLY", modules: ["KITCHEN"], maxEntities: 1, maxUsers: 5 },
+    admin?.id,
+  );
+  // Casa Verde is Basic tier (1 location) — its single "Main" location
+  // carries the client's whole module set (just {KITCHEN} here).
+  await upsertLocationWithModules(casa.id, "Main", ["KITCHEN"]);
+
+  // Asset module demo — deliberately its own client rather than a third
+  // module bolted onto Prime or Casa Verde (asset-module-phases.md Phase 7.3
+  // pickup decision, 2026-07-24): cleanest separation for the register demo,
+  // same Basic-tier/single-location shape Casa Verde already establishes.
+  const aurora = await upsertClientWithSubscription(
+    "Aurora Asset Holdings",
+    { billingCycle: "MONTHLY", modules: ["ASSET"], maxEntities: 1, maxUsers: 1 },
+    admin?.id,
+  );
+  await upsertLocationWithModules(aurora.id, "Main Warehouse", ["ASSET"]);
+
+  // Per-establishment over/short highlight threshold (client req 2026-07-21).
+  // Distinct values so the per-tenant setting is visible in the demo: Prime
+  // keeps the 11% default; Casa Verde, a small produce-forward kitchen that
+  // watches spoilage closely, runs a tighter 8%. Idempotent.
+  await prisma.client.update({ where: { id: prime.id }, data: { varianceThresholdPct: 11 } });
+  await prisma.client.update({ where: { id: casa.id }, data: { varianceThresholdPct: 8 } });
+  await prisma.client.update({ where: { id: aurora.id }, data: { varianceThresholdPct: 11 } });
+
+  // User-account caps (client req 2026-07-21). Prime demos the new Full tier
+  // (10 users), Casa Verde the Medium tier (5). Set here rather than in the
+  // create helper so existing seeded rows pick them up on a re-seed.
+  // Mark the demo subscriptions paid for the current period. Billing lockout is
+  // enforced on writes now (middleware/auth.ts), and these were seeded unpaid
+  // from 2026-01-01 — which derives to VIEW_ONLY and would make the whole demo
+  // read-only the moment it loads.
+  await prisma.subscription.updateMany({
+    where: { clientId: { in: [prime.id, casa.id, aurora.id] } },
+    data: { paid: true, lastPaidAt: new Date() },
+  });
+  await prisma.subscription.updateMany({ where: { clientId: prime.id }, data: { maxUsers: 10, packageType: "FULL" } });
+  await prisma.subscription.updateMany({ where: { clientId: casa.id }, data: { maxUsers: 5, packageType: "MEDIUM" } });
+
+  // Non-admin users are scoped via UserClientAccess (ADMIN bypasses).
+  const assign: Record<string, string[]> = {
+    owner: [prime.id],
+    manager: [prime.id, casa.id, aurora.id],
+    staff: [prime.id, aurora.id],
+    accountant: [prime.id],
+    readonly: [prime.id],
+  };
+  for (const [username, clientIds] of Object.entries(assign)) {
+    const user = await prisma.user.findUnique({ where: { username } });
+    if (!user) continue;
+    for (const clientId of clientIds) {
+      await prisma.userClientAccess.upsert({
+        where: { userId_clientId: { userId: user.id, clientId } },
+        update: {},
+        create: { userId: user.id, clientId },
+      });
+    }
+  }
+}
+
+async function upsertClientWithSubscription(
+  name: string,
+  sub: {
+    billingCycle: "MONTHLY" | "STANDALONE";
+    modules: readonly string[];
+    maxEntities: number;
+    maxUsers: number;
+    /** Omitted = the Prisma default of 1, which is the shipped assumption. */
+    maxDevices?: number;
+  },
+  createdById?: string,
+) {
+  const existing = await prisma.client.findFirst({ where: { name } });
+  // A client must never exist without a subscription (the invariant POST
+  // /clients/full enforces), so backfill instead of returning early — an
+  // existing client whose subscription went missing would otherwise stay
+  // broken through every re-seed.
+  const client = existing ?? (await prisma.client.create({ data: { name } }));
+  if (await prisma.subscription.findUnique({ where: { clientId: client.id } })) return client;
+  const packageType = derivePackageType(sub.billingCycle, sub.maxEntities, sub.maxUsers);
+  await prisma.subscription.create({
+    data: {
+      clientId: client.id,
+      packageType,
+      billingCycle: sub.billingCycle,
+      maxEntities: sub.maxEntities,
+      maxUsers: sub.maxUsers,
+      ...(sub.maxDevices !== undefined ? { maxDevices: sub.maxDevices } : {}),
+      status: "ACTIVE",
+      startDate: "2026-01-01",
+      createdById: createdById ?? null,
+      paid: false,
+      lastPaidAt: null,
+      modules: { create: sub.modules.map((module) => ({ module })) },
+      // Report tier gating, Phase 6.2 (docs/2026-08-04-report-tier-gating-phases.md):
+      // seed rows directly here rather than shelling out to the backfill
+      // script — verify-seed.mjs's throwaway database only ever runs
+      // `migrate deploy` -> `seed.ts` -> `verify-seed.ts`, so seed.ts is the
+      // one place that needs to produce these rows for a from-scratch
+      // database. Same shape Phase 5.1 uses at real subscription creation
+      // (routes/admin.ts) and the same preset the Phase 6.1 backfill script
+      // applies to pre-existing rows — one source (REPORT_TIER_PRESETS) for
+      // all three paths so they can never drift apart.
+      reports: { create: REPORT_TIER_PRESETS[packageType].map((reportSlug) => ({ reportSlug })) },
+    },
+  });
+  return client;
+}
+
+async function upsertLocation(clientId: string, name: string) {
+  const existing = await prisma.location.findFirst({ where: { clientId, name } });
+  return existing ?? prisma.location.create({ data: { clientId, name } });
+}
+
+/**
+ * Creates (or reuses) a location and ensures its LocationModule set matches
+ * `modules` exactly. Callers are responsible for keeping `modules` a subset
+ * of the client's SubscriptionModule ceiling — the same rule the real
+ * /admin API enforces at write time (Fix Plan §2.3).
+ */
+async function upsertLocationWithModules(clientId: string, name: string, modules: readonly string[]) {
+  const location = await upsertLocation(clientId, name);
+  for (const module of modules) {
+    await prisma.locationModule.upsert({
+      where: { locationId_module: { locationId: location.id, module } },
+      update: {},
+      create: { locationId: location.id, module },
+    });
+  }
+  return location;
+}
+
+async function seedUnits() {
+  // Base units: VOLUME → ml, MASS → g, COUNT → 1
+  const units: Array<{ name: string; kind: string; factorToBase: number }> = [
+    { name: "ml", kind: "VOLUME", factorToBase: 1 },
+    { name: "L", kind: "VOLUME", factorToBase: 1000 },
+    { name: "fl oz", kind: "VOLUME", factorToBase: 29.5735 },
+    { name: "gal", kind: "VOLUME", factorToBase: 3785.41 },
+    { name: "g", kind: "MASS", factorToBase: 1 },
+    { name: "kg", kind: "MASS", factorToBase: 1000 },
+    { name: "oz", kind: "MASS", factorToBase: 28.3495 },
+    { name: "lb", kind: "MASS", factorToBase: 453.592 },
+    { name: "pc", kind: "COUNT", factorToBase: 1 },
+    { name: "bottle", kind: "COUNT", factorToBase: 1 },
+    { name: "pack", kind: "COUNT", factorToBase: 1 },
+    { name: "case", kind: "COUNT", factorToBase: 1 },
+    { name: "box", kind: "COUNT", factorToBase: 1 },
+    { name: "tray", kind: "COUNT", factorToBase: 1 },
+    { name: "can", kind: "COUNT", factorToBase: 1 },
+    { name: "dozen", kind: "COUNT", factorToBase: 12 },
+    // Asset register UOM vocabulary (asset-seed-data.ts) — distinct from the
+    // Beverage/Food/Supplies count units above; the client's sheet uses these
+    // exact words rather than "pc"/"box".
+    { name: "Unit", kind: "COUNT", factorToBase: 1 },
+    { name: "Piece", kind: "COUNT", factorToBase: 1 },
+    { name: "Kit", kind: "COUNT", factorToBase: 1 },
+    { name: "Set", kind: "COUNT", factorToBase: 1 },
+  ];
+  for (const u of units) {
+    await prisma.unit.upsert({
+      where: { name: u.name },
+      update: { kind: u.kind, factorToBase: u.factorToBase },
+      create: { ...u, isSystem: true },
+    });
+  }
+}
+
+async function seedCategories() {
+  const categories: Array<{ name: string; productType: string; defaultDensityFactor?: number; sortOrder: number }> = [
+    { name: "Vodka", productType: "Beverage", defaultDensityFactor: 30.12, sortOrder: 1 },
+    { name: "Rum", productType: "Beverage", defaultDensityFactor: 30.49, sortOrder: 2 },
+    { name: "Whisky", productType: "Beverage", defaultDensityFactor: 30.86, sortOrder: 3 },
+    { name: "Gin", productType: "Beverage", defaultDensityFactor: 30.49, sortOrder: 4 },
+    { name: "Brandy", productType: "Beverage", defaultDensityFactor: 30.3, sortOrder: 5 },
+    { name: "Tequila", productType: "Beverage", defaultDensityFactor: 30.67, sortOrder: 6 },
+    { name: "Single Malt Whisky", productType: "Beverage", defaultDensityFactor: 30.12, sortOrder: 7 },
+    { name: "Cognac", productType: "Beverage", defaultDensityFactor: 30.67, sortOrder: 8 },
+    { name: "Bourbon", productType: "Beverage", defaultDensityFactor: 30.86, sortOrder: 9 },
+    { name: "Aperitif", productType: "Beverage", defaultDensityFactor: 28.9, sortOrder: 10 },
+    { name: "Liqueur", productType: "Beverage", sortOrder: 11 },
+    { name: "Wine", productType: "Beverage", sortOrder: 12 },
+    { name: "Beer", productType: "Beverage", sortOrder: 13 },
+    { name: "Soda & Mixers", productType: "Beverage", sortOrder: 14 },
+    { name: "Juices", productType: "Beverage", sortOrder: 15 },
+    { name: "Syrup", productType: "Beverage", sortOrder: 16 },
+    { name: "Meat", productType: "Food", sortOrder: 20 },
+    { name: "Poultry", productType: "Food", sortOrder: 21 },
+    { name: "Seafood", productType: "Food", sortOrder: 22 },
+    { name: "Dairy", productType: "Food", sortOrder: 23 },
+    { name: "Produce", productType: "Food", sortOrder: 24 },
+    { name: "Dry Goods", productType: "Food", sortOrder: 25 },
+    { name: "Frozen", productType: "Food", sortOrder: 26 },
+    { name: "Sauces & Dressings", productType: "Food", sortOrder: 27 },
+    { name: "Consumables", productType: "Supplies", sortOrder: 30 },
+    // Asset now has its own real product type (Fix Plan Phase E) — equipment,
+    // tools, and other non-consumable items, distinct from the consumable
+    // Supplies above (Table Napkins, Disposable Gloves).
+    { name: "Equipment", productType: "Asset", sortOrder: 40 },
+    // Full AST-001->070 register categories (Phase 7.3) — one category per
+    // item, per the client's own sheet and the proposal's explicit
+    // recommendation not to invent a consolidated scheme. Kept distinct from
+    // the flat "Equipment" category above, which predates this and already
+    // holds its own two demo items (Bar Blender, Commercial Ice Machine).
+    { name: "POS Equipment", productType: "Asset", sortOrder: 41 },
+    { name: "IT Equipment", productType: "Asset", sortOrder: 42 },
+    { name: "Security CCTV", productType: "Asset", sortOrder: 43 },
+    { name: "Security DVR/NVR", productType: "Asset", sortOrder: 44 },
+    { name: "Audio System", productType: "Asset", sortOrder: 45 },
+    { name: "Entertainment", productType: "Asset", sortOrder: 46 },
+    { name: "Coffee Equipment", productType: "Asset", sortOrder: 47 },
+    { name: "Beverage Equipment", productType: "Asset", sortOrder: 48 },
+    { name: "Refrigeration Upright", productType: "Asset", sortOrder: 49 },
+    { name: "Refrigeration Chest", productType: "Asset", sortOrder: 50 },
+    { name: "Refrigeration Wine", productType: "Asset", sortOrder: 51 },
+    { name: "Refrigeration", productType: "Asset", sortOrder: 52 },
+    { name: "Kitchen Equipment", productType: "Asset", sortOrder: 53 },
+    { name: "Furniture", productType: "Asset", sortOrder: 54 },
+    { name: "Bar Tools", productType: "Asset", sortOrder: 55 },
+    { name: "Glassware", productType: "Asset", sortOrder: 56 },
+    { name: "Dinning Ware", productType: "Asset", sortOrder: 57 },
+    { name: "Safety Fire", productType: "Asset", sortOrder: 58 },
+    { name: "Safety — First Aid", productType: "Asset", sortOrder: 59 },
+    { name: "Cleaning Equipment", productType: "Asset", sortOrder: 60 },
+    { name: "Office Equipment", productType: "Asset", sortOrder: 61 },
+  ];
+  for (const cat of categories) {
+    await prisma.category.upsert({
+      where: { name: cat.name },
+      update: {
+        productType: cat.productType,
+        defaultDensityFactor: cat.defaultDensityFactor != null ? densityPerGram(cat.defaultDensityFactor) : null,
+        sortOrder: cat.sortOrder,
+      },
+      create: { ...cat, defaultDensityFactor: cat.defaultDensityFactor != null ? densityPerGram(cat.defaultDensityFactor) : null },
+    });
+  }
+}
+
+async function seedSettings() {
+  const settings: Array<{ key: string; value: unknown }> = [
+    // Garnish added 2026-08-04 (client: "parehas" — bar and kitchen both).
+    { key: "productTypes", value: ["Beverage", "Food", "Garnish", "Supplies", "Asset"] },
+    // Asset condition/status presets (asset-module-proposal.md, client-confirmed
+    // 2026-07-23). Same data-driven-list shape as productTypes above; the UI adds
+    // an "Other" branch on top rather than storing it as a literal option.
+    { key: "conditionOptions", value: ["Active", "Needs Repair", "Under Repair", "Retired", "Damaged"] },
+    { key: "statusOptions", value: ["In Use", "In Storage", "For Disposal", "Sold"] },
+    { key: "company", value: { name: "Liquor Inventory Solution", shortName: "LIS" } },
+  ];
+  for (const s of settings) {
+    await prisma.setting.upsert({
+      where: { clientId_key: { clientId: "", key: s.key } },
+      update: { value: JSON.stringify(s.value) },
+      create: { clientId: "", key: s.key, value: JSON.stringify(s.value) },
+    });
+  }
+}
+
+interface SeedVariant {
+  size: number;
+  unit: string;
+  contentTracked?: boolean;
+  tareWeight?: number;
+  densityFactor?: number;
+  barcode?: string;
+}
+
+const ITEMS: Array<{ name: string; category: string; variants: SeedVariant[] }> = [
+  {
+    name: "Absolut Vodka",
+    category: "Vodka",
+    variants: [
+      { size: 700, unit: "ml", contentTracked: true, tareWeight: 16.9 },
+      { size: 1000, unit: "ml", contentTracked: true, tareWeight: 19.4 },
+    ],
+  },
+  { name: "Jack Daniel's Old No. 7", category: "Whisky", variants: [{ size: 700, unit: "ml", contentTracked: true, tareWeight: 17.2 }] },
+  { name: "Bacardi Superior", category: "Rum", variants: [{ size: 750, unit: "ml", contentTracked: true, tareWeight: 16.5 }] },
+  { name: "Bombay Sapphire", category: "Gin", variants: [{ size: 750, unit: "ml", contentTracked: true, tareWeight: 21.2 }] },
+  { name: "Jose Cuervo Especial", category: "Tequila", variants: [{ size: 750, unit: "ml", contentTracked: true, tareWeight: 17.6 }] },
+  { name: "San Miguel Pale Pilsen", category: "Beer", variants: [{ size: 330, unit: "ml" }] },
+  { name: "Tonic Water", category: "Soda & Mixers", variants: [{ size: 200, unit: "ml" }] },
+  { name: "Cola", category: "Soda & Mixers", variants: [{ size: 1, unit: "L" }] },
+  { name: "Orange Juice", category: "Juices", variants: [{ size: 1, unit: "L" }] },
+  { name: "House Red Wine", category: "Wine", variants: [{ size: 750, unit: "ml", contentTracked: true, tareWeight: 15.8 }] },
+  {
+    name: "Grenadine Syrup",
+    category: "Syrup",
+    variants: [{ size: 750, unit: "ml", contentTracked: true, tareWeight: 15.0, densityFactor: 25.0 }],
+  },
+  { name: "Chicken Breast", category: "Poultry", variants: [{ size: 1, unit: "kg" }] },
+  { name: "Ribeye Steak", category: "Meat", variants: [{ size: 1, unit: "kg" }] },
+  { name: "Salmon Fillet", category: "Seafood", variants: [{ size: 1, unit: "kg" }] },
+  { name: "Butter", category: "Dairy", variants: [{ size: 1, unit: "kg" }] },
+  { name: "Lime", category: "Produce", variants: [{ size: 1, unit: "pc" }] },
+  { name: "Potato Fries", category: "Frozen", variants: [{ size: 1, unit: "kg" }] },
+  { name: "Cooking Oil", category: "Dry Goods", variants: [{ size: 1, unit: "L" }] },
+  { name: "Table Napkins", category: "Consumables", variants: [{ size: 1, unit: "pack" }] },
+  { name: "Disposable Gloves", category: "Consumables", variants: [{ size: 1, unit: "box" }] },
+  // Asset catalog (Fix Plan Phase E) — non-consumable equipment, tracked as
+  // whole units rather than restocked like Beverage/Food/Supplies.
+  { name: "Bar Blender", category: "Equipment", variants: [{ size: 1, unit: "pc" }] },
+  { name: "Commercial Ice Machine", category: "Equipment", variants: [{ size: 1, unit: "pc" }] },
+];
+
+type PriceRow = [string, number, string, number, number, number?];
+
+const MAIN_BAR_PRICES: PriceRow[] = [
+  ["Absolut Vodka", 700, "ml", 620, 1650, 10],
+  ["Absolut Vodka", 1000, "ml", 850, 2200, 6],
+  ["Jack Daniel's Old No. 7", 700, "ml", 950, 2400, 6],
+  ["Bacardi Superior", 750, "ml", 550, 1400, 8],
+  ["Bombay Sapphire", 750, "ml", 1100, 2600, 5],
+  ["Jose Cuervo Especial", 750, "ml", 890, 2200, 5],
+  ["House Red Wine", 750, "ml", 420, 1250, 8],
+  ["San Miguel Pale Pilsen", 330, "ml", 45, 120, 48],
+  ["Tonic Water", 200, "ml", 30, 90, 24],
+  ["Cola", 1, "L", 42, 120, 12],
+  ["Orange Juice", 1, "L", 80, 180, 10],
+  ["Grenadine Syrup", 750, "ml", 180, 0],
+  // NOTE: Lime (Produce -> Food) and Table Napkins (Consumables -> Supplies)
+  // were removed from this list — Main Bar's LocationModule is {BAR}, which
+  // only allows Beverage (see assertLocationCatalogWithinModules). Both are
+  // real bar-side items in practice, but under this single-productType-per-
+  // category model they can't be stocked on a Bar-only location without
+  // either a Kitchen/Supplies module on Main Bar too, or a dedicated
+  // "garnish"/"barware" categorization decision — out of scope for the seed
+  // fix; keeping Main Bar strictly Beverage-only here.
+];
+
+const KITCHEN_PRICES: PriceRow[] = [
+  ["Chicken Breast", 1, "kg", 180, 320, 12],
+  ["Ribeye Steak", 1, "kg", 780, 1450, 5],
+  ["Salmon Fillet", 1, "kg", 620, 1180, 4],
+  ["Butter", 1, "kg", 320, 480, 3],
+  ["Potato Fries", 1, "kg", 110, 240, 10],
+  ["Cooking Oil", 1, "L", 95, 160, 8],
+  // NOTE: Disposable Gloves (Consumables -> Supplies) removed — this list
+  // seeds both Prime's "Kitchen" and Casa Verde's "Main", and both locations'
+  // LocationModule is {KITCHEN}, which only allows Food (see
+  // assertLocationCatalogWithinModules). Same reasoning as the Main Bar note
+  // above.
+];
+
+async function seedItems() {
+  const admin = await prisma.user.findUnique({ where: { username: "admin" } });
+  for (const def of ITEMS) {
+    const category = await prisma.category.findUnique({ where: { name: def.category } });
+    if (!category) continue;
+    let item = await prisma.item.findFirst({ where: { name: def.name } });
+    if (!item) {
+      item = await prisma.item.create({
+        data: { name: def.name, categoryId: category.id, createdById: admin?.id },
+      });
+    }
+    for (const v of def.variants) {
+      const unit = await prisma.unit.findUnique({ where: { name: v.unit } });
+      if (!unit) continue;
+      await prisma.itemVariant.upsert({
+        where: { itemId_size_unitId: { itemId: item.id, size: v.size, unitId: unit.id } },
+        update: {},
+        create: {
+          itemId: item.id,
+          size: v.size,
+          unitId: unit.id,
+          contentTracked: v.contentTracked ?? false,
+          tareWeight: v.tareWeight != null ? gramsFromOz(v.tareWeight) : null,
+          tareWeightUnit: v.tareWeight != null ? "g" : null,
+          densityFactor: v.densityFactor != null ? densityPerGram(v.densityFactor) : null,
+          barcode: v.barcode ?? null,
+        },
+      });
+    }
+  }
+}
+
+async function seedLocationCatalog(clientName: string, locationName: string, prices: PriceRow[]) {
+  const location = await prisma.location.findFirst({
+    where: { name: locationName, client: { name: clientName } },
+  });
+  if (!location) return;
+  for (const [itemName, size, unitName, cost, retail, parLevel] of prices) {
+    const variant = await prisma.itemVariant.findFirst({
+      where: { size, item: { name: itemName }, unit: { name: unitName } },
+    });
+    if (!variant) continue;
+    await prisma.locationItem.upsert({
+      where: { locationId_itemVariantId: { locationId: location.id, itemVariantId: variant.id } },
+      update: { cost, retail, parLevel: parLevel ?? null },
+      create: { locationId: location.id, itemVariantId: variant.id, cost, retail, parLevel: parLevel ?? null },
+    });
+  }
+}
+
+/**
+ * Phase C guardrail (packaging-model-fix-plan.md §3 Phase F / acceptance
+ * criteria): fail the seed loudly if any LocationItem's Category.productType
+ * falls outside what that *location's own* LocationModule set allows — the
+ * enforced reality, not just the client's subscription ceiling. This is the
+ * layer that actually matters; Casa Verde's original bug (Beverage items on
+ * a Kitchen-only "Main" location) is now structurally impossible to seed
+ * silently, whether or not the location's name happens to hint at its module.
+ */
+async function assertLocationCatalogWithinModules(clientName: string, locationName: string) {
+  const location = await prisma.location.findFirst({
+    where: { name: locationName, client: { name: clientName } },
+    include: {
+      modules: true,
+      locationItems: {
+        include: { itemVariant: { include: { item: { include: { category: true } } } } },
+      },
+    },
+  });
+  if (!location) return;
+
+  const modules = location.modules.map((m) => m.module);
+  const allowed = allowedProductTypes(modules);
+  if (!allowed) return; // no modules assigned -> unrestricted, nothing to assert
+
+  const offenders = location.locationItems
+    .map((li) => ({
+      itemName: li.itemVariant.item.name,
+      productType: li.itemVariant.item.category.productType,
+    }))
+    .filter((row) => !allowed.includes(row.productType));
+
+  if (offenders.length > 0) {
+    const detail = offenders.map((o) => `${o.itemName} (${o.productType})`).join(", ");
+    throw new Error(
+      `Seed assertion failed: location "${locationName}" (${clientName}) has modules ` +
+        `[${modules.join(", ")}] (allows [${allowed.join(", ")}]) but is stocked with items ` +
+        `outside that: ${detail}. Fix the seed data for this location before continuing.`,
+    );
+  }
+}
+
+/**
+ * Seeds the full AST-001->070 Asset register (Phase 7.3) onto Aurora Asset
+ * Holdings' "Main Warehouse" location, once 1.2-2.5 (schema, endpoints,
+ * assetCode generator) have actually landed. Source data is
+ * asset-seed-data.ts, already cleaned up by 7.1/7.2 before this runs.
+ *
+ * Each row becomes an Item + ItemVariant (one category per item, per the
+ * client's own sheet and the proposal's recommendation not to invent a
+ * consolidated scheme) and a LocationItem carrying the real assetCode
+ * sequence (2.5) — read-then-increment inside the same $transaction as the
+ * create, same as the live POST /location-items path. Condition and
+ * serialNo are per-row from asset-seed-data.ts (client-sourced for
+ * AST-001->027, demo-filled otherwise) rather than hardcoded; the client
+ * sheet's per-row Location (Cashier/Bar/Kitchen/etc.) is folded into
+ * `remarks` as "Area: <value>" since it names an area within one business
+ * site, not a separate Location record (see the Location model docstring).
+ *
+ * A Beginning (2026-07-20) and Ending (2026-07-23) committed count follow —
+ * both FULL only, since Asset rows are never weighable (3.2) — so the Asset
+ * Inventory report (6.2) has two real dates to compare. A handful of
+ * breakage/loss events (ASSET_BREAKAGE) land as NON_REVENUE SaleRecords in
+ * between, so the Asset Breakage report and the Asset Register's "last note"
+ * column both have real data to show.
+ */
+async function seedAssetRegister() {
+  const location = await prisma.location.findFirst({
+    where: { name: "Main Warehouse", client: { name: "Aurora Asset Holdings" } },
+  });
+  const admin = await prisma.user.findUnique({ where: { username: "admin" } });
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  const staff = await prisma.user.findUnique({ where: { username: "staff" } });
+  if (!location || !admin || !manager || !staff) return;
+
+  const alreadySeeded = await prisma.locationItem.findFirst({
+    where: { locationId: location.id, assetCode: { not: null } },
+  });
+  if (alreadySeeded) return;
+
+  const encoder = { createdById: staff.id, createdByName: "Aurora Warehouse Staff" };
+  const createdItems: Array<{ id: string; locationItemId: string }> = [];
+
+  for (const row of ASSET_ITEMS) {
+    const category = await prisma.category.findUnique({ where: { name: row.category } });
+    if (!category) throw new Error(`Asset seed: missing category "${row.category}" — check seedCategories()`);
+    const unit = await prisma.unit.findUnique({ where: { name: row.uom } });
+    if (!unit) throw new Error(`Asset seed: missing unit "${row.uom}" — check seedUnits()`);
+
+    let item = await prisma.item.findFirst({ where: { name: row.name, categoryId: category.id } });
+    if (!item) {
+      item = await prisma.item.create({ data: { name: row.name, categoryId: category.id, createdById: admin.id } });
+    }
+    const variant = await prisma.itemVariant.upsert({
+      where: { itemId_size_unitId: { itemId: item.id, size: 1, unitId: unit.id } },
+      update: {},
+      create: { itemId: item.id, size: 1, unitId: unit.id, contentTracked: false },
+    });
+
+    const cost = ASSET_CATEGORY_COST[row.category] ?? 0;
+    const locationItem = await prisma.$transaction(async (tx) => {
+      // Same-transaction read-then-increment as the live POST /location-items
+      // path (2.5's own docstring) — not a separate transaction beforehand.
+      const assetCode = await generateAssetCode(tx);
+      return tx.locationItem.create({
+        data: {
+          locationId: location.id,
+          itemVariantId: variant.id,
+          cost,
+          retail: cost, // Asset doesn't sell — retail mirrors cost so valuation reports stay sane, never surfaced to the client.
+          initialCost: cost,
+          assetCode,
+          serialNo: row.serialNo,
+          condition: row.condition,
+          status: "In Use",
+          // Location in this system is a whole business site (see Location
+          // model docstring); the client sheet's per-row area (Cashier/Bar/
+          // Kitchen/etc.) has no matching schema slot, so it's folded in here
+          // rather than modeled as a separate Location row.
+          remarks: `Area: ${row.location}`,
+          updatedById: admin.id,
+        },
+      });
+    });
+    createdItems.push({ id: variant.id, locationItemId: locationItem.id });
+  }
+
+  await assertLocationCatalogWithinModules("Aurora Asset Holdings", "Main Warehouse");
+
+  // Beginning / Ending count — every row present both times at its opening
+  // qty, so the Asset Inventory report has a real (flat) baseline to show.
+  const committedCount = async (countDate: string) => {
+    const session = await prisma.countSession.create({
+      data: { locationId: location.id, countDate, status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder },
+    });
+    for (const [i, row] of ASSET_ITEMS.entries()) {
+      const li = createdItems[i];
+      if (!li) continue;
+      await prisma.countLine.create({
+        data: {
+          countSessionId: session.id,
+          locationItemId: li.locationItemId,
+          countType: "FULL",
+          qtyFull: row.qty,
+          unitCost: ASSET_CATEGORY_COST[row.category] ?? 0,
+          unitRetail: ASSET_CATEGORY_COST[row.category] ?? 0,
+          ...encoder,
+        },
+      });
+    }
+  };
+  await committedCount("2026-07-20");
+  await committedCount("2026-07-23");
+
+  // Breakage/loss fixture — matched by item name against the rows just
+  // created, so the Asset Breakage report and the register's "last note"
+  // column both have real, dated events.
+  for (const b of ASSET_BREAKAGE) {
+    const idx = ASSET_ITEMS.findIndex((r) => r.name === b.name);
+    if (idx === -1) continue;
+    const li = createdItems[idx];
+    if (!li) continue;
+    await prisma.saleRecord.create({
+      data: {
+        locationId: location.id,
+        saleDate: b.date,
+        kind: "NON_REVENUE",
+        locationItemId: li.locationItemId,
+        qty: b.qty,
+        unitPrice: 0,
+        reason: b.reason,
+        note: b.note,
+        ...encoder,
+      },
+    });
+  }
+}
+
+/**
+ * Vendors carry the full structured contact block (client req 2026-07-20) and
+ * spread across the whole PAYMENT_TERMS vocabulary, so the Purchase report's
+ * By-Supplier rollup and the terms column demo every value rather than one.
+ * Harbor Wine is deliberately inactive — the Suppliers page status filter
+ * needs something to filter.
+ *
+ * Details are re-applied on every run: earlier seeds created these rows bare,
+ * and a re-seed should converge them rather than leave half-filled vendors.
+ */
+type SupplierSeed = {
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  paymentTerms: string;
+  isActive?: boolean;
+};
+
+const PRIME_SUPPLIERS: SupplierSeed[] = [
+  { name: "Metro Beverage Distribution", contactPerson: "Rina Cruz", phone: "+63 917 555 0134", email: "orders@metrobev.ph", address: "12 Kalayaan Ave, Quezon City", paymentTerms: "NET_15" },
+  { name: "Bar Essentials Supply", contactPerson: "Dennis Ong", phone: "+63 918 220 7745", email: "sales@baressentials.ph", address: "88 Sct. Borromeo St, Quezon City", paymentTerms: "COD" },
+  { name: "FreshFoods Corp", contactPerson: "Alma Villanueva", phone: "+63 917 883 2210", email: "purchasing@freshfoods.com.ph", address: "5 Mindanao Ave, Valenzuela", paymentTerms: "NET_7" },
+  { name: "Island Meat & Seafood", contactPerson: "Ferdie Lacson", phone: "+63 920 447 9012", email: "ferdie@islandmeat.ph", address: "Navotas Fish Port Complex, Navotas", paymentTerms: "NET_30" },
+  { name: "Sunrise Dairy & Produce", contactPerson: "Joy Mercado", phone: "+63 915 671 3388", email: "joy@sunrisedairy.ph", address: "Km 42 Aguinaldo Hwy, Cavite", paymentTerms: "PREPAID" },
+  { name: "Harbor Wine Merchants", contactPerson: "Teresa Yap", phone: "+63 917 004 5521", email: "teresa@harborwine.ph", address: "3F Salcedo Bldg, Makati", paymentTerms: "NET_15", isActive: false },
+];
+
+const CASA_SUPPLIERS: SupplierSeed[] = [
+  { name: "Verde Fresh Market", contactPerson: "Nonoy Bautista", phone: "+63 922 118 6604", email: "orders@verdefresh.ph", address: "Public Market Rd, Tagaytay", paymentTerms: "COD" },
+  { name: "Highland Poultry Farms", contactPerson: "Carmen Dizon", phone: "+63 919 550 8123", email: "carmen@highlandpoultry.ph", address: "Brgy. San Jose, Silang, Cavite", paymentTerms: "NET_7" },
+];
+
+async function seedSuppliers() {
+  for (const [clientName, rows] of [
+    ["Prime Hospitality Group", PRIME_SUPPLIERS],
+    ["Casa Verde Restaurant", CASA_SUPPLIERS],
+  ] as Array<[string, SupplierSeed[]]>) {
+    const client = await prisma.client.findFirst({ where: { name: clientName } });
+    if (!client) continue;
+    for (const row of rows) {
+      const data = { ...row, isActive: row.isActive ?? true };
+      const exists = await prisma.supplier.findFirst({ where: { clientId: client.id, name: row.name } });
+      if (exists) await prisma.supplier.update({ where: { id: exists.id }, data });
+      else await prisma.supplier.create({ data: { clientId: client.id, ...data } });
+    }
+  }
+}
+
+async function seedGoldenCycle() {
+  const location = await prisma.location.findFirst({
+    where: { name: "Main Bar", client: { name: "Prime Hospitality Group" } },
+  });
+  const staff = await prisma.user.findUnique({ where: { username: "staff" } });
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  if (!location || !staff || !manager) return;
+
+  const existing = await prisma.countSession.findFirst({
+    where: { locationId: location.id, countDate: "2026-06-01" },
+  });
+  if (existing) return;
+
+  const li = async (itemName: string, size: number) => {
+    const row = await prisma.locationItem.findFirst({
+      where: { locationId: location.id, itemVariant: { size, item: { name: itemName } } },
+      include: { itemVariant: true },
+    });
+    if (!row) throw new Error(`Golden cycle: missing location item ${itemName} ${size}`);
+    return row;
+  };
+
+  const absolut = await li("Absolut Vodka", 700);
+  const jd = await li("Jack Daniel's Old No. 7", 700);
+  const beer = await li("San Miguel Pale Pilsen", 330);
+  const tonic = await li("Tonic Water", 200);
+  const supplier = await prisma.supplier.findFirst({ where: { name: "Metro Beverage Distribution" } });
+
+  const encoder = { createdById: staff.id, createdByName: "Paolo Reyes" };
+
+  const weigh = (scale: number, tare: number, density: number) => {
+    const scaled = Number(((scale - tare) * density).toPrecision(15));
+    return scaled >= 0 ? Math.floor(scaled + 0.5) : Math.ceil(scaled - 0.5);
+  };
+
+  const countSession = async (
+    countDate: string,
+    lines: Array<
+      | { item: typeof absolut; full: number }
+      | { item: typeof absolut; scale: number; tare: number; density: number }
+    >,
+  ) => {
+    const session = await prisma.countSession.create({
+      data: { locationId: location.id, countDate, status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder },
+    });
+    for (const line of lines) {
+      if ("full" in line) {
+        await prisma.countLine.create({
+          data: {
+            countSessionId: session.id, locationItemId: line.item.id, countType: "FULL",
+            qtyFull: line.full, unitCost: line.item.cost, unitRetail: line.item.retail, ...encoder,
+          },
+        });
+      } else {
+        await prisma.countLine.create({
+          data: {
+            countSessionId: session.id, locationItemId: line.item.id, countType: "WEIGH",
+            scaleWeight: line.scale, scaleUnit: "oz", tareWeight: line.tare, densityFactor: line.density,
+            remainingContent: weigh(line.scale, line.tare, line.density),
+            unitCost: line.item.cost, unitRetail: line.item.retail, ...encoder,
+          },
+        });
+      }
+    }
+  };
+
+  await countSession("2026-06-01", [
+    { item: absolut, full: 12 },
+    { item: absolut, scale: 28.7, tare: 16.9, density: 30.12 },
+    { item: jd, full: 8 },
+    { item: jd, scale: 25.0, tare: 17.2, density: 30.86 },
+    { item: beer, full: 48 },
+    { item: tonic, full: 24 },
+  ]);
+
+  const purchase = await prisma.purchase.create({
+    data: {
+      locationId: location.id, purchaseDate: "2026-06-03", supplierId: supplier?.id ?? null,
+      refNo: "INV-8841", status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder,
+    },
+  });
+  const pline = (item: typeof absolut, qty: number, unitCost: number) =>
+    prisma.purchaseLine.create({
+      data: { purchaseId: purchase.id, locationItemId: item.id, qty, unitCost, lineTotal: qty * unitCost, ...encoder },
+    });
+  await pline(absolut, 6, 615);
+  await pline(beer, 24, 44);
+  await pline(tonic, 12, 30);
+
+  const sale = (
+    item: typeof absolut, saleDate: string, kind: string, qty: number, unitPrice: number,
+    extra: { contentOverride?: number; reason?: string } = {},
+  ) =>
+    prisma.saleRecord.create({
+      data: {
+        locationId: location.id, saleDate, kind, locationItemId: item.id, qty, unitPrice,
+        contentOverride: extra.contentOverride ?? null, reason: extra.reason ?? null, ...encoder,
+      },
+    });
+  await sale(absolut, "2026-06-02", "SALE", 2, 1650);
+  await sale(absolut, "2026-06-04", "SALE", 1, 1650);
+  await sale(beer, "2026-06-04", "SALE", 30, 120);
+  await sale(jd, "2026-06-05", "SALE", 2, 2400);
+  await sale(tonic, "2026-06-06", "SALE", 8, 90);
+  await sale(absolut, "2026-06-05", "NON_REVENUE", 1, 0, { contentOverride: 350, reason: "STAFF_USE" });
+  await sale(beer, "2026-06-06", "NON_REVENUE", 2, 0, { reason: "SPILLAGE" });
+  await sale(tonic, "2026-06-05", "PRODUCTION", 4, 0);
+
+  await prisma.forfeit.create({
+    data: {
+      locationId: location.id, forfeitDate: "2026-06-06", locationItemId: absolut.id,
+      scaleWeight: 25.4, scaleUnit: "oz", tareWeight: 16.9, densityFactor: 30.12,
+      remainingContent: weigh(25.4, 16.9, 30.12),
+      note: "Customer left unfinished bottle (table 7)", ...encoder,
+    },
+  });
+
+  const vodkaTonic = await prisma.menuItem.create({
+    data: { locationId: location.id, name: "Vodka Tonic" },
+  });
+  const vtV1 = await prisma.recipeVersion.create({
+    data: {
+      menuItemId: vodkaTonic.id,
+      versionNo: 1,
+      srp: 250,
+      costAtPublish: (45 / 700) * absolut.cost + 1 * tonic.cost,
+      publishedById: manager.id,
+      lines: {
+        create: [
+          { locationItemId: absolut.id, servingQty: 45, sortOrder: 0 },
+          { locationItemId: tonic.id, servingQty: 1, sortOrder: 1 },
+        ],
+      },
+    },
+  });
+
+  const menuSale = (saleDate: string, kind: string, qty: number, unitPrice: number, discountPct = 0, reason?: string) =>
+    prisma.saleRecord.create({
+      data: {
+        locationId: location.id, saleDate, kind, menuItemId: vodkaTonic.id, recipeVersionId: vtV1.id,
+        qty, unitPrice, discountPct, reason: reason ?? null, ...encoder,
+      },
+    });
+  await menuSale("2026-06-04", "SALE", 12, 250);
+  await menuSale("2026-06-05", "SALE", 2, 250, 10);
+  await menuSale("2026-06-06", "NON_REVENUE", 1, 0, 0, "STAFF_USE");
+
+  await countSession("2026-06-08", [
+    { item: absolut, full: 14 },
+    { item: absolut, scale: 22.6, tare: 16.9, density: 30.12 },
+    { item: jd, full: 6 },
+    { item: jd, scale: 21.3, tare: 17.2, density: 30.86 },
+    { item: beer, full: 39 },
+    { item: tonic, full: 8 },
+  ]);
+
+  console.log("Golden cycle seeded (2026-06-01 → 2026-06-08 at Main Bar).");
+}
+
+/**
+ * Phase-9 transfer fixture (docs/golden-fixtures.md §2): Main Bar dispatches 10 San
+ * Miguel to a new "Depot" stockroom on 2026-06-10; the Depot confirms only 8
+ * (2 broken in transit). All activity is dated ≥ 2026-06-10 so the sacred
+ * phase-3 golden window [2026-06-01, 2026-06-08) is untouched.
+ *
+ * Hand-computed expectations (re-derive before trusting):
+ *   Main Bar [06-08 → 06-15): usage(beer) = 39 + 0 + 0 + 0 + 0 − 10 − 29 = 0;
+ *     expected 0 → variance 0. Other items counted identically → variance 0.
+ *   Depot   [06-08 → 06-15): usage(beer) = 0 + 0 + 0 + 8 − 0 − 7 = 1;
+ *     expected 1 (one sale @120) → variance 0, revenue 120.
+ *   Transfer Out (Main Bar): 10 units, 450 at cost (10 × 45), 1,200 at retail.
+ *   Transfer In  (Depot):     8 units, 360 at cost,             960 at retail.
+ *   The 2-unit / ₱90-at-cost gap appears ONLY as Out(10) vs In(8) — deliberately
+ *   unexplained anywhere else; that visibility is the point of the linked design.
+ */
+async function seedTransferFixture() {
+  const prime = await prisma.client.findFirst({ where: { name: "Prime Hospitality Group" } });
+  const mainBar = await prisma.location.findFirst({ where: { name: "Main Bar", clientId: prime?.id } });
+  const staff = await prisma.user.findUnique({ where: { username: "staff" } });
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  if (!prime || !mainBar || !staff || !manager) return;
+
+  const depot = await upsertLocationWithModules(prime.id, "Depot", ["BAR"]);
+  if (depot.kind !== "STOCKROOM") {
+    await prisma.location.update({ where: { id: depot.id }, data: { kind: "STOCKROOM" } });
+  }
+  await seedLocationCatalog("Prime Hospitality Group", "Depot", [
+    ["San Miguel Pale Pilsen", 330, "ml", 45, 120],
+  ]);
+  await assertLocationCatalogWithinModules("Prime Hospitality Group", "Depot");
+
+  const existing = await prisma.transfer.findFirst({
+    where: { fromLocationId: mainBar.id, toLocationId: depot.id, businessDate: "2026-06-10" },
+  });
+  if (existing) return;
+
+  const encoder = { createdById: staff.id, createdByName: "Paolo Reyes" };
+  const li = async (locationId: string, itemName: string, size: number) => {
+    const row = await prisma.locationItem.findFirst({
+      where: { locationId, itemVariant: { size, item: { name: itemName } } },
+    });
+    if (!row) throw new Error(`Transfer fixture: missing location item ${itemName} ${size}`);
+    return row;
+  };
+  const barBeer = await li(mainBar.id, "San Miguel Pale Pilsen", 330);
+  const depotBeer = await li(depot.id, "San Miguel Pale Pilsen", 330);
+
+  // The transfer: committed at the source, then received short at the Depot.
+  const transfer = await prisma.transfer.create({
+    data: {
+      fromLocationId: mainBar.id,
+      toLocationId: depot.id,
+      businessDate: "2026-06-10",
+      status: "COMMITTED",
+      committedAt: new Date(),
+      committedById: manager.id,
+      ...encoder,
+    },
+  });
+  const line = await prisma.transferLine.create({
+    data: {
+      transferId: transfer.id,
+      locationItemId: barBeer.id,
+      qty: 10,
+      unitCost: barBeer.cost,
+      lineTotal: 10 * barBeer.cost,
+      ...encoder,
+    },
+  });
+  await prisma.transferReceiptLine.create({
+    data: {
+      transferLineId: line.id,
+      toLocationItemId: depotBeer.id,
+      qtyReceived: 8,
+      receiptDate: "2026-06-10",
+      note: "2 bottles broken in transit",
+      ...encoder,
+    },
+  });
+
+  // Depot boundary counts: a zero opening count on 06-08 (new location) and
+  // the 06-15 closing count of 7 after one sale.
+  const depotCount = async (countDate: string, qtyFull: number) => {
+    const session = await prisma.countSession.create({
+      data: { locationId: depot.id, countDate, status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder },
+    });
+    await prisma.countLine.create({
+      data: {
+        countSessionId: session.id, locationItemId: depotBeer.id, countType: "FULL",
+        qtyFull, unitCost: depotBeer.cost, unitRetail: depotBeer.retail, ...encoder,
+      },
+    });
+  };
+  await depotCount("2026-06-08", 0);
+  await prisma.saleRecord.create({
+    data: {
+      locationId: depot.id, saleDate: "2026-06-12", kind: "SALE",
+      locationItemId: depotBeer.id, qty: 1, unitPrice: 120, ...encoder,
+    },
+  });
+  await depotCount("2026-06-15", 7);
+
+  // Main Bar closing count on 06-15: beer down by the 10 transferred; every
+  // other golden-cycle item repeats its 06-08 value → zero variance across
+  // the board for the [06-08 → 06-15) window.
+  const absolut = await li(mainBar.id, "Absolut Vodka", 700);
+  const jd = await li(mainBar.id, "Jack Daniel's Old No. 7", 700);
+  const tonic = await li(mainBar.id, "Tonic Water", 200);
+  const weigh = (scale: number, tare: number, density: number) => {
+    const scaled = Number(((scale - tare) * density).toPrecision(15));
+    return scaled >= 0 ? Math.floor(scaled + 0.5) : Math.ceil(scaled - 0.5);
+  };
+  const session = await prisma.countSession.create({
+    data: { locationId: mainBar.id, countDate: "2026-06-15", status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder },
+  });
+  const full = (item: { id: string; cost: number; retail: number }, qtyFull: number) =>
+    prisma.countLine.create({
+      data: { countSessionId: session.id, locationItemId: item.id, countType: "FULL", qtyFull, unitCost: item.cost, unitRetail: item.retail, ...encoder },
+    });
+  const weighLine = (item: { id: string; cost: number; retail: number }, scale: number, tare: number, density: number) =>
+    prisma.countLine.create({
+      data: {
+        countSessionId: session.id, locationItemId: item.id, countType: "WEIGH",
+        scaleWeight: scale, scaleUnit: "oz", tareWeight: tare, densityFactor: density,
+        remainingContent: weigh(scale, tare, density),
+        unitCost: item.cost, unitRetail: item.retail, ...encoder,
+      },
+    });
+  await full(absolut, 14);
+  await weighLine(absolut, 22.6, 16.9, 30.12);
+  await full(jd, 6);
+  await weighLine(jd, 21.3, 17.2, 30.86);
+  await full(barBeer, 29);
+  await full(tonic, 8);
+
+  console.log("Transfer fixture seeded (Main Bar → Depot, 10 sent / 8 received, 2026-06-10).");
+}
+
+function normalizeAlias(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+async function demoActor(username = "staff") {
+  const user = await prisma.user.findUnique({ where: { username } });
+  if (!user) throw new Error(`Missing seed user ${username}`);
+  return { id: user.id, name: `${user.firstName} ${user.lastName}` };
+}
+
+async function demoLocation(clientName: string, locationName: string) {
+  const location = await prisma.location.findFirst({ where: { name: locationName, client: { name: clientName } } });
+  if (!location) throw new Error(`Missing seed location ${clientName} / ${locationName}`);
+  return location;
+}
+
+async function demoLocationItem(locationId: string, itemName: string, size: number) {
+  const item = await prisma.locationItem.findFirst({
+    where: { locationId, itemVariant: { size, item: { name: itemName } } },
+    include: { itemVariant: true },
+  });
+  if (!item) throw new Error(`Missing seed location item ${itemName} ${size}`);
+  return item;
+}
+
+async function seedAliases() {
+  const location = await demoLocation("Prime Hospitality Group", "Main Bar");
+  const rows: Array<[string, string, number]> = [
+    ["ABSOLUT 700ML", "Absolut Vodka", 700],
+    ["JD 700", "Jack Daniel's Old No. 7", 700],
+    ["SMB Pale", "San Miguel Pale Pilsen", 330],
+    ["Schweppes Tonic", "Tonic Water", 200],
+  ];
+  for (const [alias, itemName, size] of rows) {
+    const locationItem = await demoLocationItem(location.id, itemName, size);
+    await prisma.itemAlias.upsert({
+      where: { clientId_aliasNormalized: { clientId: location.clientId, aliasNormalized: normalizeAlias(alias) } },
+      update: { locationItemId: locationItem.id, menuItemId: null, source: "MANUAL" },
+      create: { clientId: location.clientId, aliasNormalized: normalizeAlias(alias), locationItemId: locationItem.id, source: "MANUAL" },
+    });
+  }
+}
+
+async function seedOpenWork() {
+  const location = await demoLocation("Prime Hospitality Group", "Main Bar");
+  const staff = await demoActor("staff");
+  const existingCount = await prisma.countSession.findFirst({ where: { locationId: location.id, countDate: "2026-06-10", status: "OPEN" } });
+  if (!existingCount) {
+    const absolut = await demoLocationItem(location.id, "Absolut Vodka", 700);
+    const beer = await demoLocationItem(location.id, "San Miguel Pale Pilsen", 330);
+    await prisma.countSession.create({
+      data: {
+        locationId: location.id,
+        countDate: "2026-06-10",
+        name: "Mid-week spot check",
+        status: "OPEN",
+        note: "Seeded open count for workflow review",
+        createdById: staff.id,
+        createdByName: staff.name,
+        lines: {
+          create: [
+            { locationItemId: absolut.id, countType: "FULL", qtyFull: 3, unitCost: absolut.cost, unitRetail: absolut.retail, createdById: staff.id, createdByName: staff.name },
+            { locationItemId: beer.id, countType: "FULL", qtyFull: 18, unitCost: beer.cost, unitRetail: beer.retail, createdById: staff.id, createdByName: staff.name },
+          ],
+        },
+      },
+    });
+  }
+
+  const existingPurchase = await prisma.purchase.findFirst({ where: { locationId: location.id, refNo: "DRAFT-BAR-001" } });
+  if (!existingPurchase) {
+    const supplier = await prisma.supplier.findFirst({ where: { name: "Bar Essentials Supply" } });
+    const cola = await demoLocationItem(location.id, "Cola", 1);
+    await prisma.purchase.create({
+      data: {
+        locationId: location.id,
+        supplierId: supplier?.id ?? null,
+        refNo: "DRAFT-BAR-001",
+        purchaseDate: "2026-06-09",
+        status: "DRAFT",
+        note: "Seeded draft purchase for review",
+        createdById: staff.id,
+        createdByName: staff.name,
+        lines: { create: [{ locationItemId: cola.id, qty: 12, unitCost: cola.cost, lineTotal: 12 * cola.cost, createdById: staff.id, createdByName: staff.name }] },
+      },
+    });
+  }
+}
+
+async function seedImportBatches() {
+  const location = await demoLocation("Prime Hospitality Group", "Main Bar");
+  const staff = await demoActor("staff");
+  const existing = await prisma.importBatch.findFirst({ where: { locationId: location.id, fileName: "pos-sales-review.csv" } });
+  if (existing) return;
+  const absolut = await demoLocationItem(location.id, "Absolut Vodka", 700);
+  const beer = await demoLocationItem(location.id, "San Miguel Pale Pilsen", 330);
+  const tonic = await demoLocationItem(location.id, "Tonic Water", 200);
+  await prisma.importBatch.create({
+    data: {
+      locationId: location.id,
+      kind: "SALES",
+      fileName: "pos-sales-review.csv",
+      fileSha256: "seed-pos-sales-review",
+      storedPath: "seed://pos-sales-review.csv",
+      sourceType: "CSV",
+      extractor: "DETERMINISTIC",
+      status: "NEEDS_REVIEW",
+      businessDate: "2026-06-09",
+      createdById: staff.id,
+      createdByName: staff.name,
+      rows: {
+        create: [
+          { rowIndex: 0, rawJson: JSON.stringify({ item: "ABSOLUT 700ML", qty: 2, price: 1650 }), itemText: "ABSOLUT 700ML", qty: 2, unitPrice: 1650, rowDate: "2026-06-09", matchedLocationItemId: absolut.id, matchMethod: "ALIAS", confidence: 0.96, status: "APPROVED" },
+          { rowIndex: 1, rawJson: JSON.stringify({ item: "SMB Pale", qty: 24, price: 120 }), itemText: "SMB Pale", qty: 24, unitPrice: 120, rowDate: "2026-06-09", matchedLocationItemId: beer.id, matchMethod: "ALIAS", confidence: 0.94, status: "APPROVED" },
+          { rowIndex: 2, rawJson: JSON.stringify({ item: "Mystery Comp", qty: 1 }), itemText: "Mystery Comp", qty: 1, rowDate: "2026-06-09", confidence: 0.28, warning: "No confident match. Choose an item or reject.", status: "PENDING" },
+          { rowIndex: 3, rawJson: JSON.stringify({ item: "Tonic Water", qty: 4, price: 90 }), itemText: "Tonic Water", qty: 4, unitPrice: 90, rowDate: "2026-06-09", matchedLocationItemId: tonic.id, matchMethod: "EXACT", confidence: 1, status: "REJECTED", warning: "Duplicate POS line" },
+        ],
+      },
+    },
+  });
+
+  await prisma.importBatch.create({
+    data: {
+      locationId: location.id,
+      kind: "PURCHASES",
+      fileName: "supplier-invoice-8897.xlsx",
+      fileSha256: "seed-supplier-invoice-8897",
+      storedPath: "seed://supplier-invoice-8897.xlsx",
+      sourceType: "XLSX",
+      extractor: "DETERMINISTIC",
+      status: "COMMITTED",
+      businessDate: "2026-06-07",
+      committedAt: new Date(),
+      committedById: staff.id,
+      createdById: staff.id,
+      createdByName: staff.name,
+      rows: {
+        create: [
+          { rowIndex: 0, rawJson: JSON.stringify({ item: "Tonic Water", qty: 12, cost: 30 }), itemText: "Tonic Water", qty: 12, unitCost: 30, rowDate: "2026-06-07", matchedLocationItemId: tonic.id, matchMethod: "EXACT", confidence: 1, status: "COMMITTED" },
+          { rowIndex: 1, rawJson: JSON.stringify({ item: "Cola", qty: 6, cost: 42 }), itemText: "Cola", qty: 6, unitCost: 42, rowDate: "2026-06-07", matchedLocationItemId: (await demoLocationItem(location.id, "Cola", 1)).id, matchMethod: "EXACT", confidence: 1, status: "COMMITTED" },
+        ],
+      },
+    },
+  });
+}
+
+async function seedKitchenCycle() {
+  const location = await demoLocation("Prime Hospitality Group", "Kitchen");
+  const staff = await demoActor("staff");
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  if (!manager) throw new Error("Missing seed manager");
+  const existing = await prisma.countSession.findFirst({ where: { locationId: location.id, countDate: "2026-06-01" } });
+  if (existing) return;
+  const chicken = await demoLocationItem(location.id, "Chicken Breast", 1);
+  const steak = await demoLocationItem(location.id, "Ribeye Steak", 1);
+  const fries = await demoLocationItem(location.id, "Potato Fries", 1);
+  const oil = await demoLocationItem(location.id, "Cooking Oil", 1);
+  const supplier = await prisma.supplier.findFirst({ where: { name: "Island Meat & Seafood" } });
+  const encoder = { createdById: staff.id, createdByName: staff.name };
+  const count = async (countDate: string, rows: Array<[typeof chicken, number]>) => {
+    await prisma.countSession.create({
+      data: {
+        locationId: location.id,
+        countDate,
+        status: "COMMITTED",
+        committedAt: new Date(),
+        committedById: manager.id,
+        ...encoder,
+        lines: { create: rows.map(([item, qty]) => ({ locationItemId: item.id, countType: "FULL", qtyFull: qty, unitCost: item.cost, unitRetail: item.retail, ...encoder })) },
+      },
+    });
+  };
+  await count("2026-06-01", [[chicken, 18], [steak, 7], [fries, 20], [oil, 9]]);
+  const purchase = await prisma.purchase.create({
+    data: { locationId: location.id, supplierId: supplier?.id ?? null, refNo: "KITCH-2201", purchaseDate: "2026-06-03", status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder },
+  });
+  for (const [item, qty] of [[chicken, 12], [steak, 4], [fries, 15]] as Array<[typeof chicken, number]>) {
+    await prisma.purchaseLine.create({ data: { purchaseId: purchase.id, locationItemId: item.id, qty, unitCost: item.cost, lineTotal: qty * item.cost, ...encoder } });
+  }
+  const plate = await prisma.menuItem.create({ data: { locationId: location.id, name: "Grilled Chicken Plate" } });
+  const version = await prisma.recipeVersion.create({
+    data: {
+      menuItemId: plate.id,
+      versionNo: 1,
+      srp: 420,
+      costAtPublish: 0.22 * chicken.cost + 0.18 * fries.cost,
+      publishedById: manager.id,
+      lines: { create: [{ locationItemId: chicken.id, servingQty: 0.22, sortOrder: 0 }, { locationItemId: fries.id, servingQty: 0.18, sortOrder: 1 }] },
+    },
+  });
+  await prisma.saleRecord.create({ data: { locationId: location.id, saleDate: "2026-06-04", kind: "SALE", menuItemId: plate.id, recipeVersionId: version.id, qty: 26, unitPrice: 420, ...encoder } });
+  await prisma.saleRecord.create({ data: { locationId: location.id, saleDate: "2026-06-05", kind: "NON_REVENUE", locationItemId: chicken.id, qty: 1.2, unitPrice: 0, reason: "SPOILAGE", ...encoder } });
+  await count("2026-06-08", [[chicken, 22.7], [steak, 10.5], [fries, 30.3], [oil, 8.2]]);
+}
+
+/**
+ * The void → correct trail. Committed records are immutable in this system:
+ * you void the wrong one (with a reason) and enter a replacement that points
+ * back at it via correctionOfId. Nothing in the seed demonstrated that, so the
+ * correction UI, the "corrected" badge and the Activity entry were all
+ * undemonstrable — the verify harness caught it as "voided records: 0".
+ *
+ * Dated 2026-07-25 — AFTER the last committed count (2026-07-20), so it falls
+ * outside every closed audit period and moves no reconciliation figure. Placing
+ * it on 07-16 (inside the 07-14 → 07-20 period) shifted that period's variance
+ * by exactly the corrected quantity, which is the trap: "outside the golden
+ * window" is not enough, it has to be outside ALL count-anchored periods.
+ * It still shows up in on-hand, which is correct — that is activity since the
+ * last count.
+ */
+/**
+ * The Depot as a working stockroom rather than a one-item prop.
+ *
+ * It existed only to be the receiving end of the transfer fixture — a single
+ * catalog row, no counts of its own, no par levels — so Par Level, Non-Moving,
+ * Purchases, On Hand and Cost Snapshot were all empty on the app's only
+ * second BAR location. That made it impossible to demo a multi-location bar
+ * operation, which is the shape most of these clients actually run.
+ *
+ * Modelled as a stockroom: it receives deliveries and feeds the bar. No direct
+ * sales and no forfeits — a customer never leaves a half-finished bottle in a
+ * storeroom, and inventing some to make a report non-empty would be worse than
+ * an honest empty one. Counts bracket the existing 2026-06-10 transfer so the
+ * Transfers In column has something to reconcile against.
+ */
+const DEPOT_COUNT = "Stockroom count";
+
+async function seedDepotOperations() {
+  const depot = await prisma.location.findFirst({
+    where: { name: "Depot", client: { name: "Prime Hospitality Group" } },
+  });
+  const staff = await prisma.user.findUnique({ where: { username: "staff" } });
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  if (!depot || !staff || !manager) return;
+
+  await seedLocationCatalog("Prime Hospitality Group", "Depot", [
+    ["San Miguel Pale Pilsen", 330, "ml", 45, 120, 240],
+    ["Absolut Vodka", 700, "ml", 620, 1650, 12],
+    ["Tonic Water", 200, "ml", 30, 90, 96],
+    ["Cola", 1, "L", 42, 120, 48],
+    ["Bacardi Superior", 750, "ml", 550, 1400, 10],
+  ]);
+  await assertLocationCatalogWithinModules("Prime Hospitality Group", "Depot");
+
+  // Guard on THIS function's own marker, not on "any Depot count" — the demo
+  // history also counts the Depot, so a broad guard silently skipped everything
+  // below it and left the purchase and the dead-stock row unseeded.
+  if (await prisma.countSession.findFirst({ where: { locationId: depot.id, name: DEPOT_COUNT } })) return;
+
+  const encoder = { createdById: staff.id, createdByName: "Paolo Reyes" };
+  const row = async (name: string, size: number) => {
+    const li = await prisma.locationItem.findFirst({
+      where: { locationId: depot.id, itemVariant: { size, item: { name } } },
+    });
+    if (!li) throw new Error(`Depot seed: missing ${name} ${size}`);
+    return li;
+  };
+  const beer = await row("San Miguel Pale Pilsen", 330);
+  const vodka = await row("Absolut Vodka", 700);
+  const tonic = await row("Tonic Water", 200);
+  const cola = await row("Cola", 1);
+  const rum = await row("Bacardi Superior", 750);
+
+  const count = async (countDate: string, lines: Array<{ item: typeof beer; full: number }>) => {
+    const session = await prisma.countSession.create({
+      data: {
+        locationId: depot.id, countDate, name: DEPOT_COUNT, status: "COMMITTED",
+        committedAt: new Date(), committedById: manager.id, ...encoder,
+      },
+    });
+    for (const l of lines) {
+      await prisma.countLine.create({
+        data: {
+          countSessionId: session.id, locationItemId: l.item.id, countType: "FULL",
+          qtyFull: l.full, unitCost: l.item.cost, unitRetail: l.item.retail, ...encoder,
+        },
+      });
+    }
+  };
+
+  // 06-08 opening. The 06-10 transfer brings in 8 beer (10 sent, 8 received —
+  // the existing short-receipt fixture), so 06-15 closes 8 higher on beer.
+  // Rum is stocked and never touched: the Non-Moving report needs a real
+  // example of dead stock, not a contrived one.
+  await count("2026-06-08", [
+    { item: beer, full: 120 }, { item: vodka, full: 6 }, { item: tonic, full: 48 },
+    { item: cola, full: 24 }, { item: rum, full: 4 },
+  ]);
+  await count("2026-06-15", [
+    { item: beer, full: 128 }, { item: vodka, full: 6 }, { item: tonic, full: 48 },
+    { item: cola, full: 24 }, { item: rum, full: 4 },
+  ]);
+
+  // A delivery into the stockroom, then the latest closed period 07-14 → 07-20.
+  const supplier = await prisma.supplier.findFirst({ where: { name: { contains: "Metro" } } });
+  const existingDelivery = await prisma.purchase.findFirst({ where: { locationId: depot.id, refNo: "DEP-0716-1" } });
+  const purchase = existingDelivery ?? await prisma.purchase.create({
+    data: {
+      locationId: depot.id, purchaseDate: "2026-07-16", supplierId: supplier?.id ?? null,
+      refNo: "DEP-0716-1", status: "COMMITTED", committedAt: new Date(), committedById: manager.id, ...encoder,
+    },
+  });
+  if (!existingDelivery) {
+    for (const [item, qty, unitCost] of [[beer, 96, 44], [tonic, 48, 29]] as const) {
+      await prisma.purchaseLine.create({
+        data: { purchaseId: purchase.id, locationItemId: item.id, qty, unitCost, lineTotal: qty * unitCost, ...encoder },
+      });
+    }
+  }
+  await count("2026-07-14", [
+    { item: beer, full: 96 }, { item: vodka, full: 5 }, { item: tonic, full: 36 },
+    { item: cola, full: 18 }, { item: rum, full: 4 },
+  ]);
+  // Beer closes 2 under what the delivery implies, so the Depot's Full Audit
+  // carries a real variance to investigate rather than a flat zero. The exact
+  // total is deliberately NOT asserted anywhere: the demo history also counts
+  // this location, so these lines shape the period without owning it. Only the
+  // two Main Bar anchors are pinned.
+  await count("2026-07-20", [
+    { item: beer, full: 190 }, { item: vodka, full: 5 }, { item: tonic, full: 84 },
+    { item: cola, full: 18 }, { item: rum, full: 4 },
+  ]);
+}
+
+async function seedCorrections() {
+  const location = await prisma.location.findFirst({
+    where: { name: "Main Bar", client: { name: "Prime Hospitality Group" } },
+  });
+  const manager = await prisma.user.findUnique({ where: { username: "manager" } });
+  if (!location || !manager) return;
+
+  const already = await prisma.saleRecord.findFirst({ where: { locationId: location.id, status: "VOID" } });
+  if (already) return;
+
+  const item = await prisma.locationItem.findFirst({
+    where: { locationId: location.id, itemVariant: { item: { name: "San Miguel Pale Pilsen" } } },
+  });
+  if (!item) return;
+
+  const encoder = { createdById: manager.id, createdByName: `${manager.firstName} ${manager.lastName}` };
+
+  // The mistake: a case of 24 keyed as 42 — a transposition, the most ordinary
+  // encoding error there is, and the reason the correction flow exists.
+  const wrong = await prisma.saleRecord.create({
+    data: {
+      locationId: location.id, saleDate: "2026-07-25", kind: "SALE",
+      locationItemId: item.id, qty: 42, unitPrice: 120, ...encoder,
+    },
+  });
+  await prisma.saleRecord.update({
+    where: { id: wrong.id },
+    data: {
+      status: "VOID", voidedAt: new Date(), voidedById: manager.id,
+      voidReason: "Keyed 42 instead of 24 — transposed while encoding the evening's tickets",
+    },
+  });
+  await prisma.saleRecord.create({
+    data: {
+      locationId: location.id, saleDate: "2026-07-25", kind: "SALE",
+      locationItemId: item.id, qty: 24, unitPrice: 120,
+      correctionOfId: wrong.id,
+      note: "Corrects the voided entry of 42",
+      ...encoder,
+    },
+  });
+  await prisma.activityLog.create({
+    data: {
+      userId: manager.id, userName: `${manager.firstName} ${manager.lastName}`,
+      clientId: location.clientId, locationId: location.id,
+      action: "sale.void", entity: "SaleRecord", entityId: wrong.id,
+      summary: "Voided sale: San Miguel Pale Pilsen ×42 on 2026-07-25 (transposed quantity)",
+    },
+  });
+}
+
+async function seedActivity() {
+  const location = await demoLocation("Prime Hospitality Group", "Main Bar");
+  const manager = await demoActor("manager");
+  const rows: Array<[string, string, string]> = [
+    ["auth.login", "User", "Manager signed in"],
+    ["locationItem.priceChange", "LocationItem", "Updated Absolut Vodka 700 ml par level"],
+    ["report.export", "Report", "Exported Full Audit 2026-06-01 to 2026-06-08"],
+    ["settings.company", "Setting", "Updated report footer and company details"],
+  ];
+  for (const [action, entity, summary] of rows) {
+    const exists = await prisma.activityLog.findFirst({ where: { locationId: location.id, action, summary } });
+    if (!exists) {
+      await prisma.activityLog.create({
+        data: { userId: manager.id, userName: manager.name, clientId: location.clientId, locationId: location.id, action, entity, summary },
+      });
+    }
+  }
+}
+
+/**
+ * The demo catalog is authored in OUNCES because that is how the reference
+ * sheets were written, but it is seeded in GRAMS — the client is a Philippine
+ * bar and the scale on their counter reads grams. Left in ounces, a counter had
+ * to convert every reading in their head before typing it.
+ *
+ * Tare scales up and the density factor scales down by the same constant, so
+ * `(scale − tare) × density` yields the identical millilitres either way:
+ *   (s·k − t·k) × (d/k) ≡ (s − t) × d
+ *
+ * The golden-fixture count lines are NOT touched: each carries its own explicit
+ * scale/tare/density (a snapshot of how that bottle was actually weighed), so
+ * they stay internally consistent in ounces and the anchor numbers cannot move.
+ */
+const G_PER_OZ = 28.349523125;
+const gramsFromOz = (oz: number) => Math.round(oz * G_PER_OZ * 10) / 10;
+const densityPerGram = (perOz: number) => Math.round((perOz / G_PER_OZ) * 10000) / 10000;
+
+async function main() {
+  await seedUsers();
+  await seedClients(); // includes demo subscriptions
+  await seedUnits();
+  await seedCategories();
+  await seedSettings();
+  await seedItems();
+  // Prime Hospitality Group legitimately splits one operation into two locations —
+  // "Main Bar" (BAR module -> Beverage) and "Kitchen" (KITCHEN module -> Food).
+  // This is a real, supported pattern (see packaging-model-fix-plan.md §1.2), not
+  // something to "merge" — do not collapse these back into a single location.
+  await seedLocationCatalog("Prime Hospitality Group", "Main Bar", MAIN_BAR_PRICES);
+  await seedLocationCatalog("Prime Hospitality Group", "Kitchen", KITCHEN_PRICES);
+  // Casa Verde's subscription is KITCHEN-only (allowed productType = "Food"), so its
+  // "Main" location must only ever be seeded from KITCHEN_PRICES. Seeding it from
+  // MAIN_BAR_PRICES (vodka, whisky, wine, beer -> "Beverage") was the bug this plan
+  // exists to fix: the real UI/validation in location-items.ts would reject this,
+  // but the old seed script bypassed it. Do not reintroduce a bar/beverage price
+  // list here.
+  await seedLocationCatalog("Casa Verde Restaurant", "Main", KITCHEN_PRICES);
+  await assertLocationCatalogWithinModules("Prime Hospitality Group", "Main Bar");
+  await assertLocationCatalogWithinModules("Prime Hospitality Group", "Kitchen");
+  await assertLocationCatalogWithinModules("Casa Verde Restaurant", "Main");
+  await seedAssetRegister();
+  await seedSuppliers();
+  await seedGoldenCycle();
+  await seedAliases();
+  await seedOpenWork();
+  await seedImportBatches();
+  await seedTransferFixture();
+  await seedKitchenCycle();
+  await seedDepotOperations();
+  await seedCorrections();
+  await seedActivity();
+  // Everything above is the fixture layer — the exact records the golden
+  // fixtures are computed from. seedDemoHistory stacks months of ordinary
+  // trading on top of it, strictly after the fixture windows close, so the
+  // app demos as a live operation without any fixture moving.
+  await seedDemoHistory();
+  console.log(`Seed complete. Logins: admin / manager / staff / accountant / readonly — password ${PASSWORD}`);
+  console.log("Demo subscriptions: Prime = Medium/{BAR,KITCHEN} (Main Bar=BAR, Kitchen=KITCHEN), Casa Verde = Basic/{KITCHEN}, Aurora Asset Holdings = Basic/{ASSET} (Main Warehouse)");
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exitCode = 1;
+  })
+  .finally(() => prisma.$disconnect());
