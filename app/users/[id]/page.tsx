@@ -50,7 +50,7 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
       <div className="mx-auto w-full max-w-[640px]">
         <Card className="rounded-[var(--radius-lg)]">
-          <CardContent className="flex flex-col gap-6 p-8">
+          <CardContent className="flex flex-col gap-6 p-6">
             <div className="flex items-start justify-between gap-4">
               <div className="flex items-center gap-4">
                 <Avatar className="size-16">

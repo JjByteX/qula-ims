@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import {
   allocatedFundsSchema,
+  budgetSplitterSchema,
   expenseSchema,
   type AllocatedFundsInput,
   type ExpenseInput,
@@ -44,9 +45,15 @@ function formatDate(value: string): string {
 // as one card instead of a separate /budget page — allocated funds,
 // expenses, remaining budget, and the split are all one logical concept
 // (today's budget state), so per the card-fragmentation rule in
-// docs/ux-ui-guidelines.md they stay together. The splitter is always on
-// (Client-Requests.md "Splits the budget across team members" has no
-// mention of turning it off), so there's no enable/disable control here.
+// docs/ux-ui-guidelines.md they stay together. The splitter itself is
+// always on (Client-Requests.md "Splits the budget across team members"
+// has no mention of turning it off), so there's no enable/disable
+// control — but per-person percentages are still editable ("Equal split
+// by default, but you can change it"), same override behavior as before.
+// Order follows the math rather than a fixed hierarchy: split, then the
+// two inputs (allocated, expenses), then remaining budget last as the
+// number those two inputs produce, not a headline sitting above its own
+// causes.
 export function BudgetSection({
   initialAllocatedFunds,
   initialExpenses,
@@ -65,6 +72,10 @@ export function BudgetSection({
   const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
   const [deletingExpenseId, setDeletingExpenseId] = useState<string | null>(null);
   const [expenseListError, setExpenseListError] = useState<string | null>(null);
+  const [isEditingSplit, setIsEditingSplit] = useState(false);
+  const [draftPercentages, setDraftPercentages] = useState<Record<string, string>>({});
+  const [splitError, setSplitError] = useState<string | null>(null);
+  const [isSavingSplit, setIsSavingSplit] = useState(false);
 
   const expensesTotal = useMemo(
     () => expenses.reduce((sum, expense) => sum + Number(expense.amount), 0),
@@ -175,33 +186,176 @@ export function BudgetSection({
     }
   }
 
+  function startEditingSplit() {
+    setDraftPercentages(
+      Object.fromEntries(
+        splitterState.splits.filter((s) => s.isManual).map((s) => [s.userId, String(s.percentage)]),
+      ),
+    );
+    setSplitError(null);
+    setIsEditingSplit(true);
+  }
+
+  function setDraftPercentage(userId: string, value: string) {
+    setDraftPercentages((prev) => ({ ...prev, [userId]: value }));
+  }
+
+  function clearSplitOverride(userId: string) {
+    setDraftPercentages((prev) => {
+      const next = { ...prev };
+      delete next[userId];
+      return next;
+    });
+  }
+
+  async function saveSplit() {
+    setSplitError(null);
+    const overrides = Object.entries(draftPercentages)
+      .filter(([, value]) => value.trim() !== "")
+      .map(([userId, percentage]) => ({ userId, percentage }));
+
+    const parsed = budgetSplitterSchema.safeParse({ overrides });
+    if (!parsed.success) {
+      setSplitError(parsed.error.issues[0]?.message ?? "Enter valid percentages.");
+      return;
+    }
+
+    setIsSavingSplit(true);
+    try {
+      const res = await fetch("/api/budget/splitter", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ overrides }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setSplitError(body?.error ?? "Something went wrong. Try again.");
+        return;
+      }
+      const data: SplitterState = await res.json();
+      setSplitterState(data);
+      setIsEditingSplit(false);
+    } catch {
+      setSplitError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setIsSavingSplit(false);
+    }
+  }
+
   return (
     <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-8 p-8">
-        {/* Remaining budget */}
-        <div className="flex flex-col gap-1">
-          <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
-            Remaining budget
-          </span>
-          <p
-            className={
-              "text-[var(--text-xl)] font-semibold " +
-              (isOverBudget ? "text-[var(--destructive)]" : "text-[var(--foreground)]")
-            }
-          >
-            {isOverBudget ? "-" : ""}
-            {CURRENCY_SYMBOL}
-            {formatCurrency(String(Math.abs(remaining)))}
-          </p>
-          <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            {CURRENCY_SYMBOL}
-            {formatCurrency(allocatedFunds)} allocated · {CURRENCY_SYMBOL}
-            {formatCurrency(String(expensesTotal))} spent
-          </p>
-        </div>
+      <CardContent className="flex flex-col gap-6 p-6">
+        {/* Budget split — always on */}
+        {splitterState.splits.length > 0 && (
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                Split
+              </span>
+              {!isEditingSplit && (
+                <Button variant="outline" size="sm" onClick={startEditingSplit}>
+                  <Pencil className="size-4" aria-hidden="true" />
+                  Edit split
+                </Button>
+              )}
+            </div>
+
+            {splitError && (
+              <p className="text-[var(--text-sm)] text-[var(--destructive)]">{splitError}</p>
+            )}
+
+            {isEditingSplit ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-col divide-y divide-[var(--border)]">
+                  {splitterState.splits.map((split) => (
+                    <div
+                      key={split.userId}
+                      className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                    >
+                      <span className="text-[var(--text-base)] text-[var(--foreground)]">
+                        {split.firstName} {split.lastName}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <div className="relative w-24">
+                          <Input
+                            inputMode="decimal"
+                            placeholder={split.percentage.toFixed(0)}
+                            value={draftPercentages[split.userId] ?? ""}
+                            onChange={(e) => setDraftPercentage(split.userId, e.target.value)}
+                            className="pr-7"
+                          />
+                          <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                            %
+                          </span>
+                        </div>
+                        {draftPercentages[split.userId] !== undefined && (
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Use equal split for this person"
+                            onClick={() => clearSplitOverride(split.userId)}
+                          >
+                            <X className="size-4" aria-hidden="true" />
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                  Leave a field blank to give that person an equal share of what's left.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button size="sm" onClick={saveSplit} disabled={isSavingSplit}>
+                    <Save className="size-4" aria-hidden="true" />
+                    {isSavingSplit ? "Saving..." : "Save"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditingSplit(false)}
+                    disabled={isSavingSplit}
+                  >
+                    <X className="size-4" aria-hidden="true" />
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col divide-y divide-[var(--border)]">
+                {splitterState.splits.map((split) => (
+                  <div
+                    key={split.userId}
+                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
+                  >
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[var(--text-base)] text-[var(--foreground)]">
+                        {split.firstName} {split.lastName}
+                      </span>
+                      <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                        {split.percentage.toFixed(1)}%{split.isManual ? " · custom" : ""}
+                      </span>
+                    </div>
+                    <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
+                      {CURRENCY_SYMBOL}
+                      {formatCurrency(String(split.amount))}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Allocated funds */}
-        <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-6">
+        <div
+          className={
+            "flex flex-col gap-3" +
+            (splitterState.splits.length > 0 ? " border-t border-[var(--border)] pt-6" : "")
+          }
+        >
           <div className="flex items-center justify-between">
             <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
               Allocated funds
@@ -355,35 +509,22 @@ export function BudgetSection({
           )}
         </div>
 
-        {/* Budget split — always on */}
-        {splitterState.splits.length > 0 && (
-          <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-6">
-            <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
-              Split
-            </span>
-            <div className="flex flex-col divide-y divide-[var(--border)]">
-              {splitterState.splits.map((split) => (
-                <div
-                  key={split.userId}
-                  className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[var(--text-base)] text-[var(--foreground)]">
-                      {split.firstName} {split.lastName}
-                    </span>
-                    <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                      {split.percentage.toFixed(1)}%{split.isManual ? " · custom" : ""}
-                    </span>
-                  </div>
-                  <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
-                    {CURRENCY_SYMBOL}
-                    {formatCurrency(String(split.amount))}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
+        {/* Remaining budget */}
+        <div className="flex flex-col gap-1 border-t border-[var(--border)] pt-6">
+          <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+            Remaining budget
+          </span>
+          <p
+            className={
+              "text-[var(--text-xl)] font-semibold " +
+              (isOverBudget ? "text-[var(--destructive)]" : "text-[var(--foreground)]")
+            }
+          >
+            {isOverBudget ? "-" : ""}
+            {CURRENCY_SYMBOL}
+            {formatCurrency(String(Math.abs(remaining)))}
+          </p>
+        </div>
       </CardContent>
     </Card>
   );

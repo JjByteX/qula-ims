@@ -86,13 +86,13 @@ export function CreateAccountForm() {
 
   return (
     <Card className="w-full max-w-[480px] rounded-[var(--radius-lg)]">
-      <CardHeader className="p-8 pb-0">
+      <CardHeader className="p-6 pb-0">
         <CardTitle className="text-[var(--text-xl)]">Create account</CardTitle>
         <CardDescription>
           The account is active immediately. Hand over the login details yourself.
         </CardDescription>
       </CardHeader>
-      <CardContent className="p-8">
+      <CardContent className="p-6">
         {createdEmail ? (
           <div className="flex flex-col items-center gap-3 py-4 text-center">
             <CircleCheck className="size-8 text-[var(--success)]" aria-hidden="true" />

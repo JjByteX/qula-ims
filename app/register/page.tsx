@@ -79,13 +79,13 @@ export default function RegisterPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4 py-10">
       <Card className="w-full max-w-[480px] rounded-[var(--radius-lg)]">
-        <CardHeader className="p-8 pb-0">
+        <CardHeader className="p-6 pb-0">
           <CardTitle className="text-[var(--text-xl)]">Request an account</CardTitle>
           <CardDescription>
             Fill in your details. A superadmin will review and approve your request.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-8">
+        <CardContent className="p-6">
           {submitted ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <CircleCheck className="size-8 text-[var(--success)]" aria-hidden="true" />

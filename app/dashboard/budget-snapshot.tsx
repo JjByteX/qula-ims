@@ -25,7 +25,7 @@ export function BudgetSnapshot({ initialSnapshot }: { initialSnapshot: Snapshot 
   return (
     <Link href="/budget" className="block">
       <Card className="rounded-[var(--radius-lg)] transition-colors hover:bg-[var(--muted)]">
-        <CardContent className="flex flex-col gap-6 p-8">
+        <CardContent className="flex flex-col gap-6 p-6">
           <div className="flex flex-col gap-1">
             <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
               Remaining budget

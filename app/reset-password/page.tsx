@@ -81,13 +81,13 @@ function ResetPasswordForm() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <Card className="w-full max-w-[400px] rounded-[var(--radius-lg)]">
-        <CardHeader className="p-8 pb-0">
+        <CardHeader className="p-6 pb-0">
           <CardTitle className="text-[var(--text-xl)]">Reset password</CardTitle>
           {tokenState === "valid" && !done && (
             <CardDescription>Choose a new password for your account.</CardDescription>
           )}
         </CardHeader>
-        <CardContent className="p-8">
+        <CardContent className="p-6">
           {tokenState === "checking" && (
             <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
               Checking your link...

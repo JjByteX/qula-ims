@@ -67,7 +67,7 @@ export function NotificationSettingsForm({
 
   return (
     <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-4 p-8">
+      <CardContent className="flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between">
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Notification lead time

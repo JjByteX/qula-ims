@@ -89,10 +89,10 @@ export function EditProfileForm({ profile }: { profile: Profile }) {
 
   return (
     <Card className="w-full max-w-[480px] rounded-[var(--radius-lg)]">
-      <CardHeader className="p-8 pb-0">
+      <CardHeader className="p-6 pb-0">
         <CardTitle className="text-[var(--text-xl)]">Edit profile</CardTitle>
       </CardHeader>
-      <CardContent className="p-8">
+      <CardContent className="p-6">
         <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
           <div className="flex items-center gap-4">
             <Avatar className="size-16">

@@ -25,7 +25,7 @@ export type ActiveProjectRow = {
 export function ActiveProjects({ projects }: { projects: ActiveProjectRow[] }) {
   return (
     <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-4 p-8">
+      <CardContent className="flex flex-col gap-4 p-6">
         <Link href="/projects" className="flex items-center justify-between gap-4">
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Active projects

@@ -56,11 +56,11 @@ function LoginForm() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <Card className="w-full max-w-[400px] rounded-[var(--radius-lg)]">
-        <CardHeader className="p-8 pb-0">
+        <CardHeader className="p-6 pb-0">
           <CardTitle className="text-[var(--text-xl)]">Log in</CardTitle>
           <CardDescription>Welcome back to Qula IMS.</CardDescription>
         </CardHeader>
-        <CardContent className="p-8">
+        <CardContent className="p-6">
           <form onSubmit={handleSubmit(onSubmit)} className="flex flex-col gap-5" noValidate>
             <div className="flex flex-col gap-2">
               <Label htmlFor="email">Email</Label>

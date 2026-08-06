@@ -33,7 +33,7 @@ export default async function SettingsPage() {
             signed-in user's own id. */}
         <Link href={`/users/${user.id}/edit`} className="block">
           <Card className="rounded-[var(--radius-lg)] transition-colors hover:bg-[var(--muted)]">
-            <CardContent className="flex items-center justify-between gap-4 p-8">
+            <CardContent className="flex items-center justify-between gap-4 p-6">
               <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
                 Profile
               </span>

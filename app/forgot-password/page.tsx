@@ -47,13 +47,13 @@ export default function ForgotPasswordPage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-[var(--background)] px-4">
       <Card className="w-full max-w-[400px] rounded-[var(--radius-lg)]">
-        <CardHeader className="p-8 pb-0">
+        <CardHeader className="p-6 pb-0">
           <CardTitle className="text-[var(--text-xl)]">Forgot password</CardTitle>
           <CardDescription>
             Enter the email on your account and we&apos;ll send a link to reset your password.
           </CardDescription>
         </CardHeader>
-        <CardContent className="p-8">
+        <CardContent className="p-6">
           {submitted ? (
             <div className="flex flex-col items-center gap-3 py-4 text-center">
               <CircleCheck className="size-8 text-[var(--success)]" aria-hidden="true" />

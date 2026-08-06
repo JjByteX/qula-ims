@@ -121,8 +121,8 @@ export default async function DashboardPage() {
     .map((project) => ({ id: project.id, title: project.title, milestone: project.milestone }));
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-4 py-10">
-      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-6">
+    <main className="min-h-screen bg-[var(--background)] px-6 py-10">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
         <div className="flex flex-col gap-1">
           <h1 className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
             Dashboard
@@ -132,17 +132,19 @@ export default async function DashboardPage() {
           </p>
         </div>
 
-        <BudgetSection
-          initialAllocatedFunds={allocatedFunds}
-          initialExpenses={expenseList}
-          initialSplitterState={snapshot}
-        />
-        <ActiveProjects projects={projectRows} />
-        <PendingActions
-          registrations={registrations}
-          milestonesAwaitingDocument={milestonesAwaitingDocument}
-        />
-        <RecentActivity entries={recentActivity} />
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <BudgetSection
+            initialAllocatedFunds={allocatedFunds}
+            initialExpenses={expenseList}
+            initialSplitterState={snapshot}
+          />
+          <ActiveProjects projects={projectRows} />
+          <PendingActions
+            registrations={registrations}
+            milestonesAwaitingDocument={milestonesAwaitingDocument}
+          />
+          <RecentActivity entries={recentActivity} />
+        </div>
       </div>
     </main>
   );

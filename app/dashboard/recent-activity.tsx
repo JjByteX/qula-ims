@@ -22,7 +22,7 @@ export function RecentActivity({ entries }: { entries: RecentActivityEntry[] }) 
   return (
     <Link href="/activity" className="block">
       <Card className="rounded-[var(--radius-lg)] transition-colors hover:bg-[var(--muted)]">
-        <CardContent className="flex flex-col gap-4 p-8">
+        <CardContent className="flex flex-col gap-4 p-6">
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Recent activity
           </span>
