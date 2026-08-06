@@ -6,6 +6,7 @@ import { registerSchema } from "@/lib/validation/auth";
 import { authorizeSuperadmin } from "@/lib/auth/authorize";
 import { hashPassword } from "@/lib/auth/password";
 import { uploadProfilePicture, StorageValidationError } from "@/lib/storage";
+import { logActivity } from "@/lib/activity/log";
 
 // Superadmin direct account creation (phases-plan 1.6 / Client-Requests.md
 // "Superadmin adds someone"). Same field set and validation as
@@ -79,6 +80,14 @@ export async function POST(request: Request) {
       throw error;
     }
   }
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "user.created",
+    targetType: "user",
+    targetId: created.id,
+    detail: { email: created.email },
+  });
 
   return NextResponse.json({
     message: "Account created. Share the login details with them directly.",

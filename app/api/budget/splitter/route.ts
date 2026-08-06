@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { budget, budgetSplits, expenses, users } from "@/db/schema";
 import { budgetSplitterSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Team members for the splitter (phases-plan 2.4) are active users —
 // pending and denied accounts aren't part of the team yet, same status
@@ -140,6 +141,14 @@ export async function PATCH(request: Request) {
         })),
       );
     }
+  });
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "budget.splitter_updated",
+    targetType: "budget",
+    targetId: current.id,
+    detail: { enabled: parsed.data.enabled, overrideCount: parsed.data.overrides.length },
   });
 
   const result = await computeSplits();

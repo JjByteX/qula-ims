@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { authorizeSuperadmin } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Deny action (phases-plan 1.5): "removes or archives submission"
 // (Client-Requests.md). Archiving via the existing "denied" status is
@@ -34,6 +35,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ status: "denied", updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "user.denied",
+    targetType: "user",
+    targetId: id,
+    detail: { email: updated.email },
+  });
 
   return NextResponse.json({ user: updated });
 }

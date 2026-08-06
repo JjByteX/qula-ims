@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { projectSchema } from "@/lib/validation/projects";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Any signed-in user can view and create projects (phases-plan 3.1 /
 // Client-Requests.md "Regular users can edit everything else in the
@@ -44,6 +45,14 @@ export async function POST(request: Request) {
     .insert(projects)
     .values({ ...parsed.data, createdByUserId: auth.user.id })
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.created",
+    targetType: "project",
+    targetId: created.id,
+    detail: { title: created.title },
+  });
 
   return NextResponse.json({ project: created });
 }

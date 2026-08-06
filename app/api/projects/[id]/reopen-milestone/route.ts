@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Reverse of complete-milestone — e.g. correcting an accidental click,
 // or the milestone turned out not to be fully done. Same idempotent,
@@ -26,6 +27,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ milestoneCompleted: false, updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.milestone_reopened",
+    targetType: "project",
+    targetId: id,
+    detail: { milestone: updated.milestone },
+  });
 
   return NextResponse.json({ project: updated });
 }

@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { projectSchema } from "@/lib/validation/projects";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Edit (phases-plan 3.1). Any signed-in user, same as create — see
 // app/api/projects/route.ts for why this isn't self-or-superadmin gated
@@ -34,6 +35,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .set({ ...parsed.data, updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.edited",
+    targetType: "project",
+    targetId: id,
+    detail: { fields: Object.keys(parsed.data) },
+  });
 
   return NextResponse.json({ project: updated });
 }

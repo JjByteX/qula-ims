@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Archive action (phases-plan 3.1): active -> archived. Already-archived
 // hitting this is a no-op success, not an error, matching the
@@ -28,6 +29,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ status: "archived", updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.archived",
+    targetType: "project",
+    targetId: id,
+    detail: { title: updated.title },
+  });
 
   return NextResponse.json({ project: updated });
 }

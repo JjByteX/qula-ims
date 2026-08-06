@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projectDocuments } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Reverse of mark-paid — kept as its own endpoint for the same reason
 // archive has a separate unarchive rather than one endpoint taking a
@@ -40,6 +41,14 @@ export async function POST(
     .set({ isPaid: false, updatedAt: new Date() })
     .where(eq(projectDocuments.id, documentId))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "invoice.marked_unpaid",
+    targetType: "document",
+    targetId: documentId,
+    detail: { projectId, title: updated.title },
+  });
 
   return NextResponse.json({ document: updated });
 }

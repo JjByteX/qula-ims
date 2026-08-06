@@ -6,6 +6,7 @@ import { registerSchema } from "@/lib/validation/auth";
 import { hashPassword } from "@/lib/auth/password";
 import { uploadProfilePicture, StorageValidationError } from "@/lib/storage";
 import { sendNewRegistrationEmail } from "@/lib/email/registration";
+import { logActivity } from "@/lib/activity/log";
 
 // Self-registration (phases-plan 1.4 / Client-Requests.md "Self-registration").
 // Submission is stored as status "pending" — same shape a superadmin-created
@@ -80,6 +81,14 @@ export async function POST(request: Request) {
       throw error;
     }
   }
+
+  await logActivity({
+    actorUserId: null,
+    action: "user.registered",
+    targetType: "user",
+    targetId: created.id,
+    detail: { email: normalizedEmail },
+  });
 
   const superadmins = await db
     .select({ email: users.email })

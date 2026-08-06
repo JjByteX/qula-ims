@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { expenses } from "@/db/schema";
 import { expenseSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Any signed-in user can view and create expenses (phases-plan 2.2 /
 // Client-Requests.md "Regular users can edit everything else in the
@@ -35,6 +36,14 @@ export async function POST(request: Request) {
     .insert(expenses)
     .values({ ...parsed.data, createdByUserId: auth.user.id })
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "expense.created",
+    targetType: "expense",
+    targetId: created.id,
+    detail: { amount: created.amount, description: created.description },
+  });
 
   return NextResponse.json({ expense: created });
 }

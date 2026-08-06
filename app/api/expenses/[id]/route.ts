@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { expenses } from "@/db/schema";
 import { expenseSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Edit (phases-plan 2.2). Any signed-in user, same as create — see
 // app/api/expenses/route.ts for why this isn't self-or-superadmin gated
@@ -32,6 +33,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .where(eq(expenses.id, id))
     .returning();
 
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "expense.edited",
+    targetType: "expense",
+    targetId: id,
+    detail: { previousAmount: existing.amount, nextAmount: updated.amount },
+  });
+
   return NextResponse.json({ expense: updated });
 }
 
@@ -47,5 +56,14 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   }
 
   await db.delete(expenses).where(eq(expenses.id, id));
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "expense.deleted",
+    targetType: "expense",
+    targetId: id,
+    detail: { amount: existing.amount, description: existing.description },
+  });
+
   return NextResponse.json({ success: true });
 }

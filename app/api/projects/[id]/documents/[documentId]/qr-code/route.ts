@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { projectDocuments } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { StorageValidationError, uploadInvoiceQrCode, deleteFile } from "@/lib/storage";
+import { logActivity } from "@/lib/activity/log";
 
 // Uploads (or replaces) the QR code image shown on an invoice. Only
 // meaningful for type = "invoice" — ARs don't have a QR code in the
@@ -60,6 +61,14 @@ export async function POST(
     const previousKey = previousUrl.split("/").slice(3).join("/");
     await deleteFile(previousKey).catch(() => {});
   }
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "invoice.edited",
+    targetType: "document",
+    targetId: documentId,
+    detail: { projectId, fields: ["qrCodeUrl"] },
+  });
 
   return NextResponse.json({ document: updated });
 }

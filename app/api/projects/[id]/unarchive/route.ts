@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Restore action: archived -> active. Archiving is described as
 // reversible in phases-plan 3.1 ("archive", not "delete"), so there
@@ -26,6 +27,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ status: "active", updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.unarchived",
+    targetType: "project",
+    targetId: id,
+    detail: { title: updated.title },
+  });
 
   return NextResponse.json({ project: updated });
 }

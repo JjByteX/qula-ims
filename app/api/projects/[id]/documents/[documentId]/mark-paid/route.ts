@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projectDocuments } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Paid/unpaid toggle (phases-plan 3.4), split into two focused endpoints
 // rather than folded into the general PATCH edit — same reasoning as
@@ -43,6 +44,14 @@ export async function POST(
     .set({ isPaid: true, updatedAt: new Date() })
     .where(eq(projectDocuments.id, documentId))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "invoice.marked_paid",
+    targetType: "document",
+    targetId: documentId,
+    detail: { projectId, title: updated.title },
+  });
 
   return NextResponse.json({ document: updated });
 }

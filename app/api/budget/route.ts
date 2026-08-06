@@ -4,6 +4,7 @@ import { db } from "@/db/client";
 import { budget } from "@/db/schema";
 import { allocatedFundsSchema } from "@/lib/validation/budget";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // The budget table is a single ongoing record (see db/schema/budget.ts's
 // comment), not seeded by a migration. This reads the one row if it
@@ -52,6 +53,14 @@ export async function PATCH(request: Request) {
     })
     .where(eq(budget.id, current.id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "budget.allocated_funds_updated",
+    targetType: "budget",
+    targetId: updated.id,
+    detail: { previous: current.allocatedFunds, next: updated.allocatedFunds },
+  });
 
   return NextResponse.json({ budget: updated });
 }

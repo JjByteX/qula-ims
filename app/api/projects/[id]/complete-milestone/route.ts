@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { projects } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Milestone completion toggle (phases-plan 3.4). Separate from
 // archive/unarchive — status is visibility, this is progress. Marking a
@@ -29,6 +30,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ milestoneCompleted: true, updatedAt: new Date() })
     .where(eq(projects.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "project.milestone_completed",
+    targetType: "project",
+    targetId: id,
+    detail: { milestone: updated.milestone },
+  });
 
   return NextResponse.json({ project: updated });
 }

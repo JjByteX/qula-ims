@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { authorizeSuperadmin } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Approve action (phases-plan 1.5): pending -> active. Only a row that's
 // still "pending" can be approved — already-active or already-denied users
@@ -33,6 +34,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .set({ status: "active", updatedAt: new Date() })
     .where(eq(users.id, id))
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "user.approved",
+    targetType: "user",
+    targetId: id,
+    detail: { email: updated.email },
+  });
 
   return NextResponse.json({ user: updated });
 }

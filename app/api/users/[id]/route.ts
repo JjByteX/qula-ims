@@ -5,6 +5,7 @@ import { users } from "@/db/schema";
 import { profileUpdateSchema } from "@/lib/validation/auth";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { uploadProfilePicture, deleteFile, getPublicUrl, StorageValidationError } from "@/lib/storage";
+import { logActivity } from "@/lib/activity/log";
 
 // Profile view (phases-plan 1.7 / Client-Requests.md "Anyone can view any
 // profile"). Any signed-in user, no self-or-superadmin check — that
@@ -122,6 +123,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       role: users.role,
       status: users.status,
     });
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: "user.edited",
+    targetType: "user",
+    targetId: id,
+    detail: { fields: Object.keys(parsed.data) },
+  });
 
   return NextResponse.json({ profile: updated });
 }

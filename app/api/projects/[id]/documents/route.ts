@@ -8,6 +8,7 @@ import {
   documentPrefillOverrideSchema,
 } from "@/lib/validation/documents";
 import { authorizeUser } from "@/lib/auth/authorize";
+import { logActivity } from "@/lib/activity/log";
 
 // Documents live on the project page (phases-plan 3.2), open to any
 // signed-in user — same rule as the project itself.
@@ -75,6 +76,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       createdByUserId: auth.user.id,
     })
     .returning();
+
+  await logActivity({
+    actorUserId: auth.user.id,
+    action: created.type === "ar" ? "ar.created" : "invoice.created",
+    targetType: "document",
+    targetId: created.id,
+    detail: { projectId, title: created.title },
+  });
 
   return NextResponse.json({ document: created });
 }
