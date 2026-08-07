@@ -7,6 +7,7 @@ import {
   DropdownMenuContent,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useMilestonesDialog } from "@/app/projects/milestones-dialog";
 
 export type PendingRegistration = {
   id: string;
@@ -39,6 +40,7 @@ export function NotificationMenu({
   registrations: PendingRegistration[];
   milestonesAwaitingDocument: MilestoneAwaitingDocument[];
 }) {
+  const { openProject } = useMilestonesDialog();
   const totalCount = registrations.length + milestonesAwaitingDocument.length;
   const isEmpty = totalCount === 0;
 
@@ -94,10 +96,11 @@ export function NotificationMenu({
               ))}
 
               {milestonesAwaitingDocument.map((project) => (
-                <Link
+                <button
                   key={`${project.id}:${project.milestone}`}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center gap-3 py-3 first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
+                  type="button"
+                  onClick={() => openProject(project.id)}
+                  className="flex items-center gap-3 py-3 text-left first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
                 >
                   <FileWarning
                     className="size-4 shrink-0 text-[var(--muted-foreground)]"
@@ -106,7 +109,7 @@ export function NotificationMenu({
                   <span className="text-[var(--text-base)] text-[var(--foreground)]">
                     {project.title} finished "{project.milestone}" with no invoice or AR
                   </span>
-                </Link>
+                </button>
               ))}
             </div>
           )}

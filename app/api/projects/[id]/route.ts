@@ -5,6 +5,26 @@ import { projects } from "@/db/schema";
 import { projectSchema } from "@/lib/validation/projects";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
+import { getProjectDetail } from "@/lib/projects/queries";
+
+// Backs the milestones dialog (MilestonesDialogProvider), which opens as
+// a plain client-side modal — no route/URL of its own — from the
+// dashboard, projects list, or notification menu. The dialog fetches
+// project + milestones + documents here on open rather than relying on
+// any page's server-rendered data, since it can be triggered from
+// several different pages and isn't tied to a route.
+export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await authorizeUser();
+  if (!auth.ok) return auth.response;
+
+  const { id } = await params;
+  const detail = await getProjectDetail(id);
+  if (!detail) {
+    return NextResponse.json({ error: "Project not found." }, { status: 404 });
+  }
+
+  return NextResponse.json(detail);
+}
 
 // Edit (phases-plan 3.1). Any signed-in user, same as create — see
 // app/api/projects/route.ts for why this isn't self-or-superadmin gated

@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Printer, Pencil, Upload, CircleCheck, CircleX } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useMilestonesDialog } from "@/app/projects/milestones-dialog";
 import type { ProjectDocument } from "@/db/schema";
 import styles from "./document.module.css";
 
@@ -20,6 +21,7 @@ export function DocumentToolbar({
   document: ProjectDocument;
 }) {
   const router = useRouter();
+  const { openProject } = useMilestonesDialog();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -77,7 +79,25 @@ export function DocumentToolbar({
   return (
     <div className={`${styles.noPrint} flex flex-col gap-2`}>
       <div className="flex items-center justify-between gap-2">
-        <Button variant="outline" size="sm" onClick={() => router.push(`/projects/${projectId}`)}>
+        {/* Two things, not one: router.back() actually leaves this page
+            (so the URL/page underneath the popup goes back to wherever
+            the project was opened from — dashboard, projects list,
+            notification menu), and openProject(projectId) tells the
+            popup to be open once we land. Calling openProject alone (as
+            this used to) only sets the popup's open state — it never
+            navigates, so the invoice page stayed put underneath it. The
+            two calls are safe together because MilestonesDialogProvider
+            lives in the root layout, which never unmounts across
+            client-side navigation — its state (and therefore the open
+            popup) survives the back() transition intact. */}
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            openProject(projectId);
+            router.back();
+          }}
+        >
           Back to project
         </Button>
         <div className="flex items-center gap-2">

@@ -113,14 +113,26 @@ export default async function DashboardPage() {
     });
 
     const totalPrice = projectMilestones.reduce((sum, m) => sum + Number(m.price), 0).toFixed(2);
+    const completedMilestoneCount = projectMilestones.filter((m) => m.status === "completed").length;
+
+    // Next milestone = earliest-sortOrder pending one, same ordering the
+    // project detail page's milestones-section uses. undefined when every
+    // milestone is completed (nothing "next" to show).
+    const nextMilestone = projectMilestones
+      .filter((m) => m.status === "pending")
+      .sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder))[0];
 
     return {
       id: project.id,
       title: project.title,
       milestoneCount: projectMilestones.length,
+      completedMilestoneCount,
       price: totalPrice,
       hasUnpaidInvoice,
       arPending,
+      nextMilestone: nextMilestone
+        ? { title: nextMilestone.title, price: nextMilestone.price }
+        : undefined,
     };
   });
 

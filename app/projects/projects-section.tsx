@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Pencil, Archive, ArchiveRestore, Save, X } from "lucide-react";
@@ -16,6 +15,7 @@ import {
   type ProjectInput,
 } from "@/lib/validation/projects";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
+import { useMilestonesDialog } from "@/app/projects/milestones-dialog";
 
 type Project = {
   id: string;
@@ -184,6 +184,7 @@ function EditProjectForm({
 }
 
 export function ProjectsSection({ initialProjects }: { initialProjects: Project[] }) {
+  const { openProject } = useMilestonesDialog();
   const [projects, setProjects] = useState(initialProjects);
   const [showArchived, setShowArchived] = useState(false);
   const [isAdding, setIsAdding] = useState(false);
@@ -322,10 +323,11 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                   />
                 </div>
               ) : (
-                <Link
+                <button
                   key={project.id}
-                  href={`/projects/${project.id}`}
-                  className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
+                  type="button"
+                  onClick={() => openProject(project.id)}
+                  className="flex items-center justify-between gap-4 py-4 text-left first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
                 >
                   <span className="text-[var(--text-base)] text-[var(--foreground)]">
                     {project.title}
@@ -345,7 +347,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                       size="icon"
                       aria-label="Edit project"
                       onClick={(e) => {
-                        e.preventDefault();
+                        e.stopPropagation();
                         setEditingId(project.id);
                       }}
                     >
@@ -357,7 +359,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                       aria-label={project.status === "active" ? "Archive project" : "Restore project"}
                       disabled={archivingId === project.id}
                       onClick={(e) => {
-                        e.preventDefault();
+                        e.stopPropagation();
                         handleArchiveToggle(project);
                       }}
                     >
@@ -368,7 +370,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                       )}
                     </Button>
                   </div>
-                </Link>
+                </button>
               ),
             )}
           </div>

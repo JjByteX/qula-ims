@@ -32,7 +32,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { milestoneSchema, type MilestoneInput } from "@/lib/validation/projects";
-import { useProjectModalDismiss } from "@/app/projects/[id]/project-modal";
 import type { Milestone, ProjectDocument } from "@/db/schema";
 
 // Invoice/AR creation, folded into the milestone row (Projects page
@@ -137,15 +136,21 @@ export function MilestonesSection({
   projectStatus,
   initialMilestones,
   documents: initialDocuments,
+  onNavigateAway,
 }: {
   projectId: string;
   projectTitle: string;
   projectStatus: "active" | "archived";
   initialMilestones: Milestone[];
   documents: ProjectDocument[];
+  // Called right before navigating to the invoice/AR page. Lets the
+  // milestones dialog (app/projects/milestones-dialog.tsx) close itself
+  // first. Optional and a no-op by default so this component still works
+  // as-is on the plain /projects/[id] page, where there's no dialog to
+  // close — router.push there just replaces the page normally.
+  onNavigateAway?: () => void;
 }) {
   const router = useRouter();
-  const dismissModal = useProjectModalDismiss();
   const [milestones, setMilestones] = useState(
     [...initialMilestones].sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)),
   );
@@ -176,7 +181,7 @@ export function MilestonesSection({
   async function handleCreateDocument(milestoneId: string, type: "invoice" | "ar") {
     const existing = existingDocument(milestoneId, type);
     if (existing) {
-      dismissModal();
+      onNavigateAway?.();
       router.push(`/projects/${projectId}/documents/${existing.id}`);
       return;
     }
@@ -196,11 +201,7 @@ export function MilestonesSection({
       }
       const { document } = await res.json();
       setDocuments((prev) => [document, ...prev]);
-      // Navigating to the document page leaves the modal's parallel
-      // route slot on this milestone dialog (it isn't an intercepted
-      // route), so dismiss it explicitly before pushing or it stays open
-      // on top of the document page.
-      dismissModal();
+      onNavigateAway?.();
       router.push(`/projects/${projectId}/documents/${document.id}`);
     } catch {
       setDocError("Couldn't reach the server. Check your connection and try again.");
