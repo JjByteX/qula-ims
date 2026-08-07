@@ -161,11 +161,26 @@ export function MilestonesSection({
     return documents.some((doc) => doc.milestoneId === milestoneId);
   }
 
-  // Menu item now creates the document immediately (prefilled from the
+  function existingDocument(milestoneId: string, type: "invoice" | "ar") {
+    return documents.find((doc) => doc.milestoneId === milestoneId && doc.type === type);
+  }
+
+  // Menu item creates the document immediately (prefilled from the
   // milestone, everything else blank) and takes the person straight to its
   // page, where the existing Edit action (DocumentToolbar) is how the rest
   // of the fields get filled in — no inline form on this page anymore.
+  // If this milestone already has a document of the requested type,
+  // there's nothing to create — just open the one that's already there
+  // instead of POSTing another (that used to insert a duplicate row every
+  // time the menu item was clicked again).
   async function handleCreateDocument(milestoneId: string, type: "invoice" | "ar") {
+    const existing = existingDocument(milestoneId, type);
+    if (existing) {
+      dismissModal();
+      router.push(`/projects/${projectId}/documents/${existing.id}`);
+      return;
+    }
+
     setCreatingDocFor(milestoneId);
     setDocError(null);
     try {

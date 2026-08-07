@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { milestones, projectDocuments, projects } from "@/db/schema";
 import {
@@ -70,6 +70,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .limit(1);
   if (!milestone || milestone.projectId !== projectId) {
     return NextResponse.json({ error: "Milestone not found on this project." }, { status: 404 });
+  }
+
+  // One document per type per milestone — the milestone menu is meant to
+  // create-then-open, not create again on every click. Without this check,
+  // clicking Invoice/AR on a milestone that already has one (e.g. a second
+  // click before the client's own state caught up, or any other caller)
+  // silently inserted a duplicate row instead of returning the existing one.
+  const [existing] = await db
+    .select()
+    .from(projectDocuments)
+    .where(
+      and(
+        eq(projectDocuments.milestoneId, milestone.id),
+        eq(projectDocuments.type, body.type),
+      ),
+    )
+    .limit(1);
+  if (existing) {
+    return NextResponse.json({ document: existing });
   }
 
   const schema = body.type === "ar" ? arDocumentSchema : invoiceDocumentSchema;

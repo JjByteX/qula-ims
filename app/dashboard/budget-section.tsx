@@ -269,6 +269,27 @@ export function BudgetSection({
   return (
     <Card className="flex h-full min-h-0 flex-col rounded-[var(--radius-sm)]">
       <CardContent className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
+        {/* Outstanding — same label/number pattern as Remaining budget
+            below (small muted caption, big bold amount). Sits above Split
+            since what's still owed is the first thing that matters at a
+            glance, followed by the border-t divider used everywhere else
+            in this card to separate sections. */}
+        {pendingMilestoneCount > 0 && (
+          <div className="flex flex-col gap-1 border-b border-[var(--border)] pb-6">
+            <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+              Outstanding
+            </span>
+            <p className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
+              {CURRENCY_SYMBOL}
+              {formatCurrency(pendingMilestonesTotal)}
+            </p>
+            <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+              {pendingMilestoneCount}{" "}
+              {pendingMilestoneCount === 1 ? "milestone" : "milestones"} remaining
+            </p>
+          </div>
+        )}
+
         {/* Budget split — always on */}
         {splitterState.splits.length > 0 && (
           <div className="flex flex-col gap-4">
@@ -398,19 +419,11 @@ export function BudgetSection({
                   ))}
                 </div>
 
-                <div className="flex items-center justify-between text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                  <span>
+                <div className="flex flex-col gap-4">
+                  <div className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
                     Paid to date: {CURRENCY_SYMBOL}
                     {formatCurrency(String(splitterState.splitPool))}
-                  </span>
-                  {pendingMilestoneCount > 0 && (
-                    <span>
-                      Outstanding: {CURRENCY_SYMBOL}
-                      {formatCurrency(pendingMilestonesTotal)} ·{" "}
-                      {pendingMilestoneCount}{" "}
-                      {pendingMilestoneCount === 1 ? "milestone" : "milestones"} remaining
-                    </span>
-                  )}
+                  </div>
                 </div>
               </div>
             )}
