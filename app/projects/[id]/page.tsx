@@ -1,16 +1,18 @@
 import { notFound } from "next/navigation";
-import { asc, desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
-import { db } from "@/db/client";
-import { milestones, projectDocuments, projects } from "@/db/schema";
+import { getProjectDetail } from "@/lib/projects/queries";
 import { MilestonesSection } from "./milestones-section";
-import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
+import { ProjectModal } from "./project-modal";
 
-// Invoice/AR live on the project page (Client-Requests.md: "Lives on the
-// same page as Projects, directly connected") and now inside the same
-// card as Milestones (Projects page request: one card, not two) — this
-// fetches both in one page load rather than the documents list being a
-// separate route or a separate card.
+// Milestones (Client-Requests.md / phases-plan 3.1/3.4) has no page of its
+// own — the card in MilestonesSection is the only content this route ever
+// renders, and it always renders as a centered modal over whatever page
+// linked here (dashboard "Active projects", the notification menu, or the
+// projects list itself), never as a full page. Rendering the modal here in
+// the page component — rather than only via an intercepting route — means
+// every entry point gets the modal, including links from outside
+// /projects, and a refresh while the modal is open lands on the same
+// modal-over-nothing instead of a bare page.
 export default async function ProjectDetailPage({
   params,
 }: {
@@ -19,56 +21,21 @@ export default async function ProjectDetailPage({
   await requireUser();
   const { id } = await params;
 
-  const [project] = await db.select().from(projects).where(eq(projects.id, id)).limit(1);
-  if (!project) {
+  const detail = await getProjectDetail(id);
+  if (!detail) {
     notFound();
   }
-
-  const [projectMilestones, documents] = await Promise.all([
-    db
-      .select()
-      .from(milestones)
-      .where(eq(milestones.projectId, id))
-      .orderBy(asc(milestones.sortOrder), asc(milestones.createdAt)),
-    db
-      .select()
-      .from(projectDocuments)
-      .where(eq(projectDocuments.projectId, id))
-      .orderBy(desc(projectDocuments.createdAt)),
-  ]);
-
-  // Total price is the sum of the project's milestones — not a stored
-  // field, so it can never drift from what the milestones actually add
-  // up to (same reasoning as the API's GET /api/projects computed sum).
-  const totalPrice = projectMilestones
-    .reduce((sum, m) => sum + Number(m.price), 0)
-    .toFixed(2);
+  const { project, milestones, documents } = detail;
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-4 py-10">
-      <div className="mx-auto flex w-full max-w-[960px] flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
-            {project.title}
-            {project.status === "archived" && (
-              <span className="ml-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                Archived
-              </span>
-            )}
-          </h1>
-          <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            {projectMilestones.length} {projectMilestones.length === 1 ? "milestone" : "milestones"}{" "}
-            · {CURRENCY_SYMBOL}
-            {formatCurrency(totalPrice)}
-          </p>
-        </div>
-
-        <MilestonesSection
-          projectId={project.id}
-          initialMilestones={projectMilestones}
-          documents={documents}
-        />
-      </div>
-    </main>
+    <ProjectModal>
+      <MilestonesSection
+        projectId={project.id}
+        projectTitle={project.title}
+        projectStatus={project.status}
+        initialMilestones={milestones}
+        documents={documents}
+      />
+    </ProjectModal>
   );
 }

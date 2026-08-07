@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { milestoneSchema, type MilestoneInput } from "@/lib/validation/projects";
+import { useProjectModalDismiss } from "@/app/projects/[id]/project-modal";
 import type { Milestone, ProjectDocument } from "@/db/schema";
 
 // Invoice/AR creation, folded into the milestone row (Projects page
@@ -132,14 +133,19 @@ function MilestoneForm({
 
 export function MilestonesSection({
   projectId,
+  projectTitle,
+  projectStatus,
   initialMilestones,
   documents: initialDocuments,
 }: {
   projectId: string;
+  projectTitle: string;
+  projectStatus: "active" | "archived";
   initialMilestones: Milestone[];
   documents: ProjectDocument[];
 }) {
   const router = useRouter();
+  const dismissModal = useProjectModalDismiss();
   const [milestones, setMilestones] = useState(
     [...initialMilestones].sort((a, b) => Number(a.sortOrder) - Number(b.sortOrder)),
   );
@@ -175,6 +181,11 @@ export function MilestonesSection({
       }
       const { document } = await res.json();
       setDocuments((prev) => [document, ...prev]);
+      // Navigating to the document page leaves the modal's parallel
+      // route slot on this milestone dialog (it isn't an intercepted
+      // route), so dismiss it explicitly before pushing or it stays open
+      // on top of the document page.
+      dismissModal();
       router.push(`/projects/${projectId}/documents/${document.id}`);
     } catch {
       setDocError("Couldn't reach the server. Check your connection and try again.");
@@ -290,23 +301,33 @@ export function MilestonesSection({
 
   return (
     <Card className="rounded-[var(--radius-lg)]">
+      {/* pr-12 on the header row only (not the whole card) reserves room
+          for DialogContent's close button, which is absolutely positioned
+          at top-4 right-4 of the dialog shell — this Card sits flush
+          against that edge since ProjectModal renders DialogContent with
+          p-0. Without the offset, "Add milestone" lands directly under
+          the X with almost no gap. */}
       <CardContent className="flex flex-col gap-4 p-6">
-        <div className="flex items-center justify-between">
-          <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
-            Milestones &amp; Documents
-          </span>
-          <div className="flex items-center gap-3">
-            <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
-              {CURRENCY_SYMBOL}
-              {formatCurrency(totalPrice)}
+        <div className="flex items-center justify-between gap-4 pr-12">
+          <div className="flex items-center gap-2">
+            <h1 className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
+              {projectTitle}
+              {projectStatus === "archived" && (
+                <span className="ml-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                  Archived
+                </span>
+              )}
+            </h1>
+            <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+              ({milestones.length} {milestones.length === 1 ? "Milestone" : "Milestones"})
             </span>
-            {!isAdding && (
-              <Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
-                <Plus className="size-4" aria-hidden="true" />
-                Add milestone
-              </Button>
-            )}
           </div>
+          {!isAdding && (
+            <Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
+              <Plus className="size-4" aria-hidden="true" />
+              Add milestone
+            </Button>
+          )}
         </div>
 
         {isAdding && (
@@ -384,67 +405,72 @@ export function MilestonesSection({
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-6">
                     <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
                       {CURRENCY_SYMBOL}
                       {formatCurrency(milestone.price)}
                     </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={milestone.status === "completed" ? "Reopen milestone" : "Mark milestone complete"}
-                      disabled={busyId === milestone.id}
-                      onClick={() => handleToggleComplete(milestone)}
-                    >
-                      {milestone.status === "completed" ? (
-                        <CircleX className="size-4" aria-hidden="true" />
-                      ) : (
-                        <CircleCheck className="size-4" aria-hidden="true" />
-                      )}
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Edit milestone"
-                      onClick={() => setEditingId(milestone.id)}
-                    >
-                      <Pencil className="size-4" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Delete milestone"
-                      disabled={busyId === milestone.id}
-                      onClick={() => handleDelete(milestone)}
-                    >
-                      <Trash2 className="size-4" aria-hidden="true" />
-                    </Button>
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Milestone document options"
-                          disabled={creatingDocFor === milestone.id}
-                        >
-                          <MoreVertical className="size-4" aria-hidden="true" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem
-                          onSelect={() => handleCreateDocument(milestone.id, "invoice")}
-                        >
-                          <FileText className="size-4" aria-hidden="true" />
-                          Invoice
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          onSelect={() => handleCreateDocument(milestone.id, "ar")}
-                        >
-                          <Receipt className="size-4" aria-hidden="true" />
-                          Acknowledgement Receipt
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                    {/* Tight gap-0.5 groups these four as one toolbar,
+                        distinct from the gap-6 that separates the price
+                        (data) from the actions (controls) above. */}
+                    <div className="flex items-center gap-0.5">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={milestone.status === "completed" ? "Reopen milestone" : "Mark milestone complete"}
+                        disabled={busyId === milestone.id}
+                        onClick={() => handleToggleComplete(milestone)}
+                      >
+                        {milestone.status === "completed" ? (
+                          <CircleX className="size-4" aria-hidden="true" />
+                        ) : (
+                          <CircleCheck className="size-4" aria-hidden="true" />
+                        )}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Edit milestone"
+                        onClick={() => setEditingId(milestone.id)}
+                      >
+                        <Pencil className="size-4" aria-hidden="true" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label="Delete milestone"
+                        disabled={busyId === milestone.id}
+                        onClick={() => handleDelete(milestone)}
+                      >
+                        <Trash2 className="size-4" aria-hidden="true" />
+                      </Button>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            aria-label="Milestone document options"
+                            disabled={creatingDocFor === milestone.id}
+                          >
+                            <MoreVertical className="size-4" aria-hidden="true" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onSelect={() => handleCreateDocument(milestone.id, "invoice")}
+                          >
+                            <FileText className="size-4" aria-hidden="true" />
+                            Invoice
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onSelect={() => handleCreateDocument(milestone.id, "ar")}
+                          >
+                            <Receipt className="size-4" aria-hidden="true" />
+                            Acknowledgement Receipt
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
                 </div>
                 </div>
@@ -452,6 +478,21 @@ export function MilestonesSection({
             )}
           </div>
         )}
+
+        {/* Total moved here from the header (invoice/receipt convention:
+            the sum reads as a conclusion after the line items, not a
+            number the person has to hold in mind before seeing what it's
+            made of). Border-top gives it the same "subtotal line" framing
+            you'd see on a receipt. */}
+        <div className="flex items-center justify-between border-t border-[var(--border)] pt-4">
+          <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
+            Total
+          </span>
+          <span className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
+            {CURRENCY_SYMBOL}
+            {formatCurrency(totalPrice)}
+          </span>
+        </div>
       </CardContent>
     </Card>
   );
