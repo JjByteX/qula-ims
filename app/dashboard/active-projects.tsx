@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 export type ActiveProjectRow = {
   id: string;
   title: string;
-  milestone: string;
+  milestoneCount: number;
   price: string;
   hasUnpaidInvoice: boolean;
   arPending: boolean;
@@ -49,7 +49,8 @@ export function ActiveProjects({ projects }: { projects: ActiveProjectRow[] }) {
                     {project.title}
                   </span>
                   <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                    {project.milestone}
+                    {project.milestoneCount}{" "}
+                    {project.milestoneCount === 1 ? "milestone" : "milestones"}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">

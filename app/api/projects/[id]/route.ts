@@ -8,10 +8,12 @@ import { logActivity } from "@/lib/activity/log";
 
 // Edit (phases-plan 3.1). Any signed-in user, same as create — see
 // app/api/projects/route.ts for why this isn't self-or-superadmin gated
-// the way profile edits are. Archiving is a separate action endpoint
-// (app/api/projects/[id]/archive/route.ts) rather than a status field
-// here, matching the users/pending approve/deny pattern of one focused
-// endpoint per status transition.
+// the way profile edits are. Only title is editable here now — milestones
+// have their own routes (app/api/projects/[id]/milestones/...) since each
+// one has its own title/price/status. Archiving is a separate action
+// endpoint (app/api/projects/[id]/archive/route.ts) rather than a status
+// field here, matching the users/pending approve/deny pattern of one
+// focused endpoint per status transition.
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorizeUser();
   if (!auth.ok) return auth.response;

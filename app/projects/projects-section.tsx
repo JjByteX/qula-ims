@@ -1,40 +1,137 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Plus, Pencil, Archive, ArchiveRestore, Save, X } from "lucide-react";
+import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
-import { projectSchema, type ProjectInput } from "@/lib/validation/projects";
+import {
+  projectSchema,
+  milestoneSchema,
+  type ProjectInput,
+} from "@/lib/validation/projects";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 
 type Project = {
   id: string;
   title: string;
-  milestone: string;
   price: string;
   status: "active" | "archived";
 };
 
-function formatCurrency(value: string): string {
-  return new Intl.NumberFormat("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(Number(value));
+// Create form: title + its first milestone (title, price) in one step —
+// the common case is a project starting with at least one billable stage
+// (Client-Requests.md "Enter Project", revised for multi-milestone
+// projects), so this avoids a separate "now add a milestone" step
+// immediately after every create. More milestones can be added
+// afterward from the project's own page
+// (app/projects/[id]/milestones-section.tsx).
+const createProjectSchema = projectSchema.extend({ milestone: milestoneSchema });
+type CreateProjectInput = z.infer<typeof createProjectSchema>;
+
+function CreateProjectForm({
+  onSubmit,
+  onCancel,
+}: {
+  onSubmit: (data: CreateProjectInput) => Promise<void>;
+  onCancel?: () => void;
+}) {
+  const [serverError, setServerError] = useState<string | null>(null);
+  const {
+    register,
+    handleSubmit,
+    formState: { errors, isSubmitting, isValid },
+  } = useForm<CreateProjectInput>({
+    resolver: zodResolver(createProjectSchema),
+    mode: "onChange",
+    defaultValues: { title: "", milestone: { title: "", price: "" } },
+  });
+
+  async function submit(data: CreateProjectInput) {
+    setServerError(null);
+    try {
+      await onSubmit(data);
+    } catch {
+      setServerError("Something went wrong. Try again.");
+    }
+  }
+
+  return (
+    <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
+      <div className="flex flex-col gap-2">
+        <Label htmlFor="title">Project title</Label>
+        <Input id="title" aria-invalid={!!errors.title} {...register("title")} />
+        {errors.title && (
+          <p className="text-[var(--text-sm)] text-[var(--destructive)]">{errors.title.message}</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="milestone.title">First milestone</Label>
+          <Input
+            id="milestone.title"
+            aria-invalid={!!errors.milestone?.title}
+            {...register("milestone.title")}
+          />
+          {errors.milestone?.title && (
+            <p className="text-[var(--text-sm)] text-[var(--destructive)]">
+              {errors.milestone.title.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="milestone.price">Price</Label>
+          <Input
+            id="milestone.price"
+            inputMode="decimal"
+            aria-invalid={!!errors.milestone?.price}
+            {...register("milestone.price")}
+          />
+          {errors.milestone?.price && (
+            <p className="text-[var(--text-sm)] text-[var(--destructive)]">
+              {errors.milestone.price.message}
+            </p>
+          )}
+        </div>
+      </div>
+
+      {serverError && (
+        <p className="text-[var(--text-sm)] text-[var(--destructive)]">{serverError}</p>
+      )}
+
+      <div className="flex items-center gap-2">
+        <Button type="submit" size="sm" disabled={!isValid || isSubmitting}>
+          <Save className="size-4" aria-hidden="true" />
+          {isSubmitting ? "Saving..." : "Add"}
+        </Button>
+        {onCancel && (
+          <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={isSubmitting}>
+            <X className="size-4" aria-hidden="true" />
+            Cancel
+          </Button>
+        )}
+      </div>
+    </form>
+  );
 }
 
-function ProjectForm({
+// Edit form: title only. Milestones (each with their own title/price) are
+// edited on the project's own page now that a project can have more than
+// one.
+function EditProjectForm({
   defaultValues,
   onSubmit,
   onCancel,
-  submitLabel,
 }: {
   defaultValues: ProjectInput;
   onSubmit: (data: ProjectInput) => Promise<void>;
   onCancel?: () => void;
-  submitLabel: string;
 }) {
   const [serverError, setServerError] = useState<string | null>(null);
   const {
@@ -59,35 +156,11 @@ function ProjectForm({
   return (
     <form onSubmit={handleSubmit(submit)} className="flex flex-col gap-4" noValidate>
       <div className="flex flex-col gap-2">
-        <Label htmlFor="title">Project title</Label>
-        <Input id="title" aria-invalid={!!errors.title} {...register("title")} />
+        <Label htmlFor="edit-title">Project title</Label>
+        <Input id="edit-title" aria-invalid={!!errors.title} {...register("title")} />
         {errors.title && (
           <p className="text-[var(--text-sm)] text-[var(--destructive)]">{errors.title.message}</p>
         )}
-      </div>
-
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="milestone">Milestone</Label>
-          <Input id="milestone" aria-invalid={!!errors.milestone} {...register("milestone")} />
-          {errors.milestone && (
-            <p className="text-[var(--text-sm)] text-[var(--destructive)]">
-              {errors.milestone.message}
-            </p>
-          )}
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="price">Price</Label>
-          <Input
-            id="price"
-            inputMode="decimal"
-            aria-invalid={!!errors.price}
-            {...register("price")}
-          />
-          {errors.price && (
-            <p className="text-[var(--text-sm)] text-[var(--destructive)]">{errors.price.message}</p>
-          )}
-        </div>
       </div>
 
       {serverError && (
@@ -97,7 +170,7 @@ function ProjectForm({
       <div className="flex items-center gap-2">
         <Button type="submit" size="sm" disabled={!isValid || isSubmitting}>
           <Save className="size-4" aria-hidden="true" />
-          {isSubmitting ? "Saving..." : submitLabel}
+          {isSubmitting ? "Saving..." : "Save"}
         </Button>
         {onCancel && (
           <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={isSubmitting}>
@@ -120,7 +193,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
   const [isLoadingArchived, setIsLoadingArchived] = useState(false);
   const [hasLoadedArchived, setHasLoadedArchived] = useState(false);
 
-  async function handleCreate(data: ProjectInput) {
+  async function handleCreate(data: CreateProjectInput) {
     const res = await fetch("/api/projects", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -146,7 +219,9 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
       throw new Error(body?.error ?? "Something went wrong.");
     }
     const { project } = await res.json();
-    setProjects((prev) => prev.map((p) => (p.id === id ? project : p)));
+    // The PATCH response doesn't recompute price (it only touches title),
+    // so merge rather than replace to keep the row's already-known price.
+    setProjects((prev) => prev.map((p) => (p.id === id ? { ...p, ...project } : p)));
     setEditingId(null);
   }
 
@@ -164,8 +239,9 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
       const { project: updated } = await res.json();
       if (showArchived) {
         // Both statuses are visible in this view — just reflect the new
-        // status in place rather than removing the row.
-        setProjects((prev) => prev.map((p) => (p.id === updated.id ? updated : p)));
+        // status in place rather than removing the row. Same
+        // merge-not-replace reasoning as handleUpdate above.
+        setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)));
       } else {
         // Only active projects are visible here, so the only action
         // reachable in this view is archiving — remove the row once it
@@ -223,12 +299,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
         </div>
 
         {isAdding && (
-          <ProjectForm
-            defaultValues={{ title: "", milestone: "", price: "" }}
-            onSubmit={handleCreate}
-            onCancel={() => setIsAdding(false)}
-            submitLabel="Add"
-          />
+          <CreateProjectForm onSubmit={handleCreate} onCancel={() => setIsAdding(false)} />
         )}
 
         {rowError && (
@@ -244,44 +315,39 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
             {visibleProjects.map((project) =>
               editingId === project.id ? (
                 <div key={project.id} className="py-4 first:pt-0 last:pb-0">
-                  <ProjectForm
-                    defaultValues={{
-                      title: project.title,
-                      milestone: project.milestone,
-                      price: project.price,
-                    }}
+                  <EditProjectForm
+                    defaultValues={{ title: project.title }}
                     onSubmit={(data) => handleUpdate(project.id, data)}
                     onCancel={() => setEditingId(null)}
-                    submitLabel="Save"
                   />
                 </div>
               ) : (
-                <div
+                <Link
                   key={project.id}
-                  className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                  href={`/projects/${project.id}`}
+                  className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
                 >
-                  <div className="flex flex-col gap-0.5">
-                    <span className="text-[var(--text-base)] text-[var(--foreground)]">
-                      {project.title}
-                      {project.status === "archived" && (
-                        <span className="ml-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                          Archived
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                      {project.milestone}
-                    </span>
-                  </div>
+                  <span className="text-[var(--text-base)] text-[var(--foreground)]">
+                    {project.title}
+                    {project.status === "archived" && (
+                      <span className="ml-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                        Archived
+                      </span>
+                    )}
+                  </span>
                   <div className="flex items-center gap-3">
                     <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
-                      ${formatCurrency(project.price)}
+                      {CURRENCY_SYMBOL}
+                      {formatCurrency(project.price)}
                     </span>
                     <Button
                       variant="ghost"
                       size="icon"
                       aria-label="Edit project"
-                      onClick={() => setEditingId(project.id)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        setEditingId(project.id);
+                      }}
                     >
                       <Pencil className="size-4" aria-hidden="true" />
                     </Button>
@@ -290,7 +356,10 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                       size="icon"
                       aria-label={project.status === "active" ? "Archive project" : "Restore project"}
                       disabled={archivingId === project.id}
-                      onClick={() => handleArchiveToggle(project)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        handleArchiveToggle(project);
+                      }}
                     >
                       {project.status === "active" ? (
                         <Archive className="size-4" aria-hidden="true" />
@@ -299,7 +368,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
                       )}
                     </Button>
                   </div>
-                </div>
+                </Link>
               ),
             )}
           </div>

@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { desc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
-import { projectDocuments, projects } from "@/db/schema";
+import { milestones, projectDocuments, projects } from "@/db/schema";
 import {
   arDocumentSchema,
   invoiceDocumentSchema,
@@ -26,15 +26,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   return NextResponse.json({ documents: list });
 }
 
-// Creates a generated invoice or AR (not an uploaded file — uploaded
-// docs/PDFs use lib/storage's uploadProjectDocument via a separate flow).
-// title/milestone/price are prefilled from the project (phases-plan 3.3)
-// and used as-is unless the request includes its own value for one of
-// them — in which case that override wins. This is what makes the
-// prefill "editable before saving" rather than a hard, silent overwrite:
-// the client (ProjectDocumentsSection) shows these three fields on the
-// create form seeded from the project, and only sends a field here if
-// the person changed it.
+// Creates a generated invoice or AR for one milestone (not an uploaded
+// file — uploaded docs/PDFs use lib/storage's uploadProjectDocument via a
+// separate flow). title/milestone/price are prefilled from the project +
+// selected milestone (phases-plan 3.3) and used as-is unless the request
+// includes its own value for one of them — in which case that override
+// wins. This is what makes the prefill "editable before saving" rather
+// than a hard, silent overwrite: the client (ProjectDocumentsSection)
+// shows these fields on the create form seeded from the milestone, and
+// only sends a field here if the person changed it.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorizeUser();
   if (!auth.ok) return auth.response;
@@ -57,6 +57,15 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const [milestone] = await db
+    .select()
+    .from(milestones)
+    .where(eq(milestones.id, overrideParsed.data.milestoneId))
+    .limit(1);
+  if (!milestone || milestone.projectId !== projectId) {
+    return NextResponse.json({ error: "Milestone not found on this project." }, { status: 404 });
+  }
+
   const schema = body.type === "ar" ? arDocumentSchema : invoiceDocumentSchema;
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -68,10 +77,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     .insert(projectDocuments)
     .values({
       projectId,
+      milestoneId: milestone.id,
       type: body.type,
       title: overrideParsed.data.title ?? project.title,
-      milestone: overrideParsed.data.milestone ?? project.milestone,
-      price: overrideParsed.data.price ?? project.price,
+      milestone: overrideParsed.data.milestone ?? milestone.title,
+      price: overrideParsed.data.price ?? milestone.price,
       ...parsed.data,
       createdByUserId: auth.user.id,
     })
@@ -82,7 +92,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     action: created.type === "ar" ? "ar.created" : "invoice.created",
     targetType: "document",
     targetId: created.id,
-    detail: { projectId, title: created.title },
+    detail: { projectId, milestoneId: milestone.id, title: created.title },
   });
 
   return NextResponse.json({ document: created });

@@ -99,27 +99,33 @@ Scope is based on Client-Requests.md and tech-stack.md. This covers accounts, bu
 - Store each person's remaining split
 - Recalculate splits when budget or team changes
 
-## Phase 3, Projects, Invoices and ARs
+## Phase 3, Projects, Milestones, Invoices and ARs
 
-### 3.1 Project entity
-- Build project model: title, milestone, price
+### 3.1 Project and milestone entities
+- Build project model: title only
+- Build milestone model: title, price, status (pending/completed), sort order, linked to a project
+- A project can have many milestones; its total price is the sum of its milestones' prices, computed rather than stored
 - Build create, edit, archive for projects
+- Build create, edit, delete, reorder for milestones within a project
 - Build project list view
 
 ### 3.2 Invoice and AR
-- Build invoice and AR entity linked to a project
+- Build invoice and AR entity linked to a specific milestone (not the project as a whole)
+- A project with several milestones can have a separate invoice/AR per milestone as each is billed
 - Support doc and PDF file types only
 - Upload and store files in R2
-- Display invoice and AR on the same page as the linked project
+- Display invoice and AR on the same page as the linked project, grouped or filterable by milestone
 
 ### 3.3 Prefill logic
-- When creating an invoice or AR from a project, prefill title, milestone, and price
+- When creating an invoice or AR, first select which milestone it bills
+- Prefill title (from the project), milestone (from the selected milestone), and price (from the selected milestone)
 - Allow editing prefilled values before saving
 
 ### 3.4 Status tracking
 - Track whether an invoice is paid or unpaid
+- Track whether a milestone is completed or reopened, independently of other milestones on the same project
 - Track whether an AR exists for a completed milestone
-- Surface this status for use in dashboard flags
+- Surface this status for use in dashboard flags, per milestone
 
 ## Phase 4, Activity Log
 
@@ -129,7 +135,7 @@ Scope is based on Client-Requests.md and tech-stack.md. This covers accounts, bu
 ### 4.2 Log writers
 - Add logging calls to account creation, approval, denial, and edits
 - Add logging calls to budget changes, allocated funds and expenses
-- Add logging calls to project, invoice, and AR changes
+- Add logging calls to project, milestone, invoice, and AR changes
 
 ### 4.3 Log viewer
 - Build full activity log page
@@ -144,13 +150,13 @@ Scope is based on Client-Requests.md and tech-stack.md. This covers accounts, bu
 - Show each person's remaining split if splitter is active
 
 ### 5.2 Active projects section
-- List ongoing projects with title, milestone, price
+- List ongoing projects with title, milestone count, and total price (sum of milestone prices)
 - Flag projects with an unpaid invoice
-- Flag projects with a pending AR
+- Flag projects with a completed milestone still pending its AR
 
 ### 5.3 Pending actions section
 - Show registration requests awaiting approval, superadmin view only
-- Show finished milestones with no invoice or AR yet
+- Show finished milestones with no invoice or AR yet, per milestone
 
 ### 5.4 Recent activity section
 - Show last 5 to 10 entries from the activity log

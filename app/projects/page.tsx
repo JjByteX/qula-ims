@@ -1,7 +1,5 @@
-import { desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
-import { db } from "@/db/client";
-import { projects } from "@/db/schema";
+import { getProjectsWithComputedPrice } from "@/lib/projects/queries";
 import { ProjectsSection } from "./projects-section";
 
 // Any signed-in user can view and edit projects (phases-plan 3.1 /
@@ -12,11 +10,7 @@ import { ProjectsSection } from "./projects-section";
 export default async function ProjectsPage() {
   await requireUser();
 
-  const activeProjects = await db
-    .select()
-    .from(projects)
-    .where(eq(projects.status, "active"))
-    .orderBy(desc(projects.createdAt));
+  const activeProjects = await getProjectsWithComputedPrice("active");
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
@@ -26,8 +20,8 @@ export default async function ProjectsPage() {
             Projects
           </h1>
           <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            Title, milestone, and price for each project — reused when you create its
-            invoice or acknowledgement receipt.
+            Each project can have several milestones — add its first one now, and
+            more later from the project page.
           </p>
         </div>
 

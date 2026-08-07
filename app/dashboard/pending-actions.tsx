@@ -66,7 +66,7 @@ export function PendingActions({
 
             {milestonesAwaitingDocument.map((project) => (
               <Link
-                key={project.id}
+                key={`${project.id}:${project.milestone}`}
                 href={`/projects/${project.id}`}
                 className="flex items-center gap-3 py-3 first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
               >

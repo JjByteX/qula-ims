@@ -13,34 +13,38 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@/components/ui/dropdown-menu";
-import type { Project, ProjectDocument } from "@/db/schema";
+import type { Milestone, Project, ProjectDocument } from "@/db/schema";
 import type { ArDocumentInput, InvoiceDocumentInput } from "@/lib/validation/documents";
 import { formatDocumentDate, formatPesoAmount } from "@/lib/documents/format";
 import { isInvoiceDueSoon } from "@/lib/documents/due-soon";
 import { DOCUMENT_DEFAULTS } from "@/lib/documents/defaults";
 import { DocumentForm } from "./documents/[documentId]/document-form";
 
-// prefill logic (phases-plan 3.3): title/milestone/price seed from the
-// project so the create form shows them ready to go, but they're
-// rendered as editable fields (DocumentForm's showPrefillFields) rather
-// than hidden — the person can adjust wording for this one document
-// before saving, and only a changed value is sent to the server; an
-// untouched field still resolves server-side from the live project.
-// Org-level payment defaults (DOCUMENT_DEFAULTS) prefill the invoice's
-// payment block the same way, so it isn't retyped every time.
+// prefill logic (phases-plan 3.3, revised for multi-milestone projects):
+// title/milestone/price seed from the project + the milestone the person
+// picked, so the create form shows them ready to go, but they're rendered
+// as editable fields (DocumentForm's showPrefillFields) rather than
+// hidden — the person can adjust wording for this one document before
+// saving, and only a changed value is sent to the server; an untouched
+// field still resolves server-side from the live milestone. Org-level
+// payment defaults (DOCUMENT_DEFAULTS) prefill the invoice's payment
+// block the same way, so it isn't retyped every time.
 function todayIso(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
-function emptyArDefaults(project: Project): ArDocumentInput & {
+function emptyArDefaults(
+  project: Project,
+  milestone: Milestone,
+): ArDocumentInput & {
   title: string;
   milestone: string;
   price: string;
 } {
   return {
     title: project.title,
-    milestone: project.milestone,
-    price: project.price,
+    milestone: milestone.title,
+    price: milestone.price,
     documentNumber: "",
     documentDate: todayIso(),
     receivedFromName: "",
@@ -54,15 +58,18 @@ function emptyArDefaults(project: Project): ArDocumentInput & {
   };
 }
 
-function emptyInvoiceDefaults(project: Project): InvoiceDocumentInput & {
+function emptyInvoiceDefaults(
+  project: Project,
+  milestone: Milestone,
+): InvoiceDocumentInput & {
   title: string;
   milestone: string;
   price: string;
 } {
   return {
     title: project.title,
-    milestone: project.milestone,
-    price: project.price,
+    milestone: milestone.title,
+    price: milestone.price,
     documentNumber: "",
     documentDate: todayIso(),
     dueDate: "",
@@ -72,29 +79,38 @@ function emptyInvoiceDefaults(project: Project): InvoiceDocumentInput & {
     amountInWords: "",
     paymentPurpose: "",
     agreementDate: "",
-    totalProjectCost: project.price,
+    totalProjectCost: milestone.price,
     paymentMethod: DOCUMENT_DEFAULTS.paymentMethod,
     paymentAccountName: DOCUMENT_DEFAULTS.paymentAccountName,
     paymentBank: DOCUMENT_DEFAULTS.paymentBank,
     paymentAccountNumber: "",
-    paymentReferenceNote: `${project.title} - Milestone Payment`,
+    paymentReferenceNote: `${project.title} - ${milestone.title}`,
     issuedBy: DOCUMENT_DEFAULTS.issuedBy,
   };
 }
 
 export function ProjectDocumentsSection({
   project,
+  milestones,
   initialDocuments,
   notificationDaysBefore,
 }: {
   project: Project;
+  milestones: Milestone[];
   initialDocuments: ProjectDocument[];
   notificationDaysBefore: number;
 }) {
   const router = useRouter();
   const [documents, setDocuments] = useState(initialDocuments);
+  const [pendingMilestoneId, setPendingMilestoneId] = useState<string | null>(null);
   const [creatingType, setCreatingType] = useState<"invoice" | "ar" | null>(null);
   const [listError, setListError] = useState<string | null>(null);
+
+  const pendingMilestone = milestones.find((m) => m.id === pendingMilestoneId) ?? null;
+
+  function milestoneTitleFor(document: ProjectDocument): string {
+    return milestones.find((m) => m.id === document.milestoneId)?.title ?? document.milestone;
+  }
 
   async function handleCreate(
     data: (ArDocumentInput | InvoiceDocumentInput) & {
@@ -104,11 +120,11 @@ export function ProjectDocumentsSection({
     },
   ) {
     const type = creatingType;
-    if (!type) return;
+    if (!type || !pendingMilestoneId) return;
     const res = await fetch(`/api/projects/${project.id}/documents`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type, ...data }),
+      body: JSON.stringify({ type, milestoneId: pendingMilestoneId, ...data }),
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
@@ -117,6 +133,7 @@ export function ProjectDocumentsSection({
     const { document } = await res.json();
     setDocuments((prev) => [document, ...prev]);
     setCreatingType(null);
+    setPendingMilestoneId(null);
     router.push(`/projects/${project.id}/documents/${document.id}`);
   }
 
@@ -127,7 +144,7 @@ export function ProjectDocumentsSection({
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Invoices &amp; Acknowledgement Receipts
           </span>
-          {!creatingType && (
+          {!creatingType && milestones.length > 0 && (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -136,26 +153,54 @@ export function ProjectDocumentsSection({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onSelect={() => setCreatingType("invoice")}>
-                  <FileText className="size-4" aria-hidden="true" />
-                  Invoice
-                </DropdownMenuItem>
-                <DropdownMenuItem onSelect={() => setCreatingType("ar")}>
-                  <Receipt className="size-4" aria-hidden="true" />
-                  Acknowledgement Receipt
-                </DropdownMenuItem>
+                {milestones.map((milestone) => (
+                  <DropdownMenuItem
+                    key={milestone.id}
+                    onSelect={() => setPendingMilestoneId(milestone.id)}
+                  >
+                    {milestone.title}
+                  </DropdownMenuItem>
+                ))}
               </DropdownMenuContent>
             </DropdownMenu>
           )}
         </div>
 
-        {creatingType && (
+        {pendingMilestoneId && !creatingType && (
+          <div className="flex flex-col gap-3 border-t border-[var(--border)] pt-4">
+            <span className="text-[var(--text-sm)] font-semibold text-[var(--foreground)]">
+              New document for &quot;{pendingMilestone?.title}&quot; — choose a type
+            </span>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setCreatingType("invoice")}>
+                <FileText className="size-4" aria-hidden="true" />
+                Invoice
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setCreatingType("ar")}>
+                <Receipt className="size-4" aria-hidden="true" />
+                Acknowledgement Receipt
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => setPendingMilestoneId(null)}>
+                Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {creatingType && pendingMilestone && (
           <div className="flex flex-col gap-4 border-t border-[var(--border)] pt-4">
             <div className="flex items-center justify-between">
               <span className="text-[var(--text-sm)] font-semibold text-[var(--foreground)]">
-                New {creatingType === "ar" ? "Acknowledgement Receipt" : "Invoice"}
+                New {creatingType === "ar" ? "Acknowledgement Receipt" : "Invoice"} — {pendingMilestone.title}
               </span>
-              <Button variant="ghost" size="sm" onClick={() => setCreatingType(null)}>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setCreatingType(null);
+                  setPendingMilestoneId(null);
+                }}
+              >
                 Cancel
               </Button>
             </div>
@@ -163,8 +208,8 @@ export function ProjectDocumentsSection({
               type={creatingType}
               defaultValues={
                 (creatingType === "ar"
-                  ? emptyArDefaults(project)
-                  : emptyInvoiceDefaults(project)) as never
+                  ? emptyArDefaults(project, pendingMilestone)
+                  : emptyInvoiceDefaults(project, pendingMilestone)) as never
               }
               onSubmit={handleCreate}
               submitLabel="Create"
@@ -175,7 +220,13 @@ export function ProjectDocumentsSection({
 
         {listError && <p className="text-[var(--text-sm)] text-[var(--destructive)]">{listError}</p>}
 
-        {documents.length === 0 && !creatingType ? (
+        {milestones.length === 0 && (
+          <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
+            Add a milestone above before creating an invoice or AR.
+          </p>
+        )}
+
+        {documents.length === 0 && !creatingType && milestones.length > 0 ? (
           <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
             No invoices or acknowledgement receipts yet.
           </p>
@@ -215,7 +266,8 @@ export function ProjectDocumentsSection({
                       }) && <Badge variant="destructive">Due soon</Badge>}
                     </span>
                     <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                      {document.documentDate ? formatDocumentDate(document.documentDate) : ""}
+                      {milestoneTitleFor(document)}
+                      {document.documentDate ? ` · ${formatDocumentDate(document.documentDate)}` : ""}
                     </span>
                   </div>
                   {document.amount && (

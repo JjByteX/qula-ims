@@ -1,11 +1,12 @@
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { getOrCreateAppSettings } from "@/lib/settings/get";
 import { db } from "@/db/client";
-import { projectDocuments, projects } from "@/db/schema";
+import { milestones, projectDocuments, projects } from "@/db/schema";
 import { ProjectDocumentsSection } from "./project-documents-section";
-import { MilestoneStatus } from "./milestone-status";
+import { MilestonesSection } from "./milestones-section";
+import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 
 // Invoice/AR live on the project page (Client-Requests.md: "Lives on the
 // same page as Projects, directly connected"), so this fetches both in
@@ -23,15 +24,29 @@ export default async function ProjectDetailPage({
     notFound();
   }
 
-  const documents = await db
-    .select()
-    .from(projectDocuments)
-    .where(eq(projectDocuments.projectId, id))
-    .orderBy(desc(projectDocuments.createdAt));
+  const [projectMilestones, documents] = await Promise.all([
+    db
+      .select()
+      .from(milestones)
+      .where(eq(milestones.projectId, id))
+      .orderBy(asc(milestones.sortOrder), asc(milestones.createdAt)),
+    db
+      .select()
+      .from(projectDocuments)
+      .where(eq(projectDocuments.projectId, id))
+      .orderBy(desc(projectDocuments.createdAt)),
+  ]);
 
   // Notification lead time (phases-plan 6.1), applied here to flag
   // invoices due soon — see lib/documents/due-soon.ts.
   const settings = await getOrCreateAppSettings();
+
+  // Total price is the sum of the project's milestones — not a stored
+  // field, so it can never drift from what the milestones actually add
+  // up to (same reasoning as the API's GET /api/projects computed sum).
+  const totalPrice = projectMilestones
+    .reduce((sum, m) => sum + Number(m.price), 0)
+    .toFixed(2);
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
@@ -46,18 +61,21 @@ export default async function ProjectDetailPage({
             )}
           </h1>
           <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            {project.milestone} · ₱
-            {new Intl.NumberFormat("en-US", {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            }).format(Number(project.price))}
+            {projectMilestones.length} {projectMilestones.length === 1 ? "milestone" : "milestones"}{" "}
+            · {CURRENCY_SYMBOL}
+            {formatCurrency(totalPrice)}
           </p>
         </div>
 
-        <MilestoneStatus project={project} documents={documents} />
+        <MilestonesSection
+          projectId={project.id}
+          initialMilestones={projectMilestones}
+          documents={documents}
+        />
 
         <ProjectDocumentsSection
           project={project}
+          milestones={projectMilestones}
           initialDocuments={documents}
           notificationDaysBefore={settings.notificationDaysBefore}
         />

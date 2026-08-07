@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, inArray } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
 import { computeSplits } from "@/lib/budget/compute";
 import { db } from "@/db/client";
-import { activityLog, expenses, projectDocuments, projects, users } from "@/db/schema";
+import { activityLog, expenses, milestones, projectDocuments, projects, users } from "@/db/schema";
 import { BudgetSection } from "./budget-section";
 import { ActiveProjects, type ActiveProjectRow } from "./active-projects";
 import {
@@ -11,6 +11,7 @@ import {
   type PendingRegistration,
 } from "./pending-actions";
 import { RecentActivity } from "./recent-activity";
+import { ProfileMenu } from "./profile-menu";
 
 // Last 5 to 10 entries (phases-plan 5.4 / Client-Requests.md) — 10 is the
 // top of that range, so the dashboard shows as much as the spec allows
@@ -75,27 +76,46 @@ export default async function DashboardPage() {
   // same row.
   const allocatedFunds = String(snapshot.allocatedFunds);
 
-  // Flags mirror the per-project logic already established on the project
-  // detail page (app/projects/[id]/milestone-status.tsx): an unpaid
-  // invoice is any invoice document with isPaid false, and AR pending
-  // (5.2's badge) is milestoneCompleted with no AR document yet. Fetched
-  // here in one pass across every active project rather than N+1 queries
-  // per project.
-  const allDocuments = activeProjects.length
-    ? await db.select().from(projectDocuments)
-    : [];
+  // Flags mirror the per-milestone logic on the project detail page
+  // (app/projects/[id]/milestones-section.tsx), now evaluated per
+  // milestone instead of per project — a project's "unpaid invoice" or
+  // "AR pending" state is the union across all of its milestones. Both
+  // fetched here in one pass across every active project rather than N+1
+  // queries per project.
+  const [allMilestones, allDocuments] = activeProjects.length
+    ? await Promise.all([
+        db
+          .select()
+          .from(milestones)
+          .where(
+            inArray(
+              milestones.projectId,
+              activeProjects.map((p) => p.id),
+            ),
+          ),
+        db.select().from(projectDocuments),
+      ])
+    : [[], []];
 
   const projectRows: ActiveProjectRow[] = activeProjects.map((project) => {
+    const projectMilestones = allMilestones.filter((m) => m.projectId === project.id);
     const projectDocs = allDocuments.filter((doc) => doc.projectId === project.id);
     const hasUnpaidInvoice = projectDocs.some((doc) => doc.type === "invoice" && !doc.isPaid);
-    const hasAr = projectDocs.some((doc) => doc.type === "ar");
-    const arPending = project.milestoneCompleted && !hasAr;
+
+    // A milestone is "AR pending" once it's completed and has no AR
+    // document billed against it specifically (project_documents.milestoneId).
+    const arPending = projectMilestones.some((m) => {
+      if (m.status !== "completed") return false;
+      return !projectDocs.some((doc) => doc.milestoneId === m.id && doc.type === "ar");
+    });
+
+    const totalPrice = projectMilestones.reduce((sum, m) => sum + Number(m.price), 0).toFixed(2);
 
     return {
       id: project.id,
       title: project.title,
-      milestone: project.milestone,
-      price: project.price,
+      milestoneCount: projectMilestones.length,
+      price: totalPrice,
       hasUnpaidInvoice,
       arPending,
     };
@@ -110,26 +130,40 @@ export default async function DashboardPage() {
 
   // "Finished milestones with no invoice or AR made yet" (5.3) is broader
   // than 5.2's AR-pending badge: it fires on a missing invoice too, not
-  // just a missing AR, since either document type counts as the
-  // milestone having been actioned.
-  const milestonesAwaitingDocument: MilestoneAwaitingDocument[] = activeProjects
-    .filter((project) => {
-      if (!project.milestoneCompleted) return false;
-      const projectDocs = allDocuments.filter((doc) => doc.projectId === project.id);
-      return projectDocs.length === 0;
-    })
-    .map((project) => ({ id: project.id, title: project.title, milestone: project.milestone }));
+  // just a missing AR (either document type counts as the milestone
+  // having been actioned), and now surfaces per milestone rather than per
+  // project, since a project can have several finished milestones each
+  // still needing their own billing document.
+  const milestonesAwaitingDocument: MilestoneAwaitingDocument[] = activeProjects.flatMap((project) => {
+    const projectMilestones = allMilestones.filter((m) => m.projectId === project.id);
+    const projectDocs = allDocuments.filter((doc) => doc.projectId === project.id);
+    return projectMilestones
+      .filter((m) => {
+        if (m.status !== "completed") return false;
+        return !projectDocs.some((doc) => doc.milestoneId === m.id);
+      })
+      .map((m) => ({ id: project.id, title: project.title, milestone: m.title }));
+  });
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-6 py-10">
       <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-[var(--text-xl)] font-semibold text-[var(--foreground)]">
-            Dashboard
-          </h1>
-          <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            One glance at where things stand.
-          </p>
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            {/* eslint-disable-next-line @next/next/no-img-element -- static
+                brand asset from /public, not a next/image candidate */}
+            <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto" />
+            <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+              Internal Management System
+            </p>
+          </div>
+          <ProfileMenu
+            user={{
+              firstName: user.firstName,
+              lastName: user.lastName,
+              profilePictureUrl: user.profilePictureUrl,
+            }}
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">

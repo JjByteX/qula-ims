@@ -11,21 +11,42 @@ import {
 import { users } from "./users";
 
 export const projectStatusEnum = pgEnum("project_status", ["active", "archived"]);
+export const milestoneStatusEnum = pgEnum("milestone_status", ["pending", "completed"]);
 
+// A project is now a container for one or more milestones (Client-Requests.md
+// "Enter Project" was revised: a real engagement is usually billed in named
+// stages — see the payment-breakdown shape in reference proposals — not one
+// flat price). The project itself no longer carries milestone/price
+// directly; both are now properties of each milestone row, and the
+// project's displayed price is the sum of its milestones' prices
+// (computed in queries, not stored, so it never drifts).
 export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
-  milestone: text("milestone").notNull(),
-  price: numeric("price", { precision: 14, scale: 2 }).notNull(),
   status: projectStatusEnum("status").notNull().default("active"),
-  // Status tracking (phases-plan 3.4): "Finished milestones with no
-  // invoice or AR made yet" (Client-Requests.md dashboard spec) needs a
-  // fact to check against — this is that fact. Separate from `status`
-  // (active/archived), which is about visibility, not progress: a
-  // project stays active and visible while its current milestone is
-  // marked complete, so the team can then issue the invoice/AR before
-  // archiving or moving on.
-  milestoneCompleted: boolean("milestone_completed").notNull().default(false),
+  createdByUserId: uuid("created_by_user_id")
+    .notNull()
+    .references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// One row per milestone. sortOrder is explicit (rather than relying on
+// createdAt) so milestones can be reordered independently of creation
+// order — e.g. inserting a stage between two existing ones.
+export const milestones = pgTable("milestones", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  projectId: uuid("project_id")
+    .notNull()
+    .references(() => projects.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  price: numeric("price", { precision: 14, scale: 2 }).notNull(),
+  status: milestoneStatusEnum("status").notNull().default("pending"),
+  sortOrder: numeric("sort_order", { precision: 10, scale: 2 }).notNull().default("0"),
+  // Set when status flips to "completed", cleared on reopen — same
+  // signal completeMilestone/reopenMilestone routes need for ordering
+  // "recently completed" lists without a separate query.
+  completedAt: timestamp("completed_at", { withTimezone: true }),
   createdByUserId: uuid("created_by_user_id")
     .notNull()
     .references(() => users.id),
@@ -36,7 +57,10 @@ export const projects = pgTable("projects", {
 export const documentTypeEnum = pgEnum("document_type", ["invoice", "ar"]);
 
 // Invoice / Acknowledgement Receipt. Lives on the project page (phases-plan
-// 3.2). Two ways a document gets here:
+// 3.2), scoped to one milestone — each milestone is billed independently
+// (a project with several milestones issues a separate invoice/AR per
+// stage, matching how real engagements are actually billed). Two ways a
+// document gets here:
 //   1. Uploaded as-is (fileUrl/fileName set) — doc/PDF only, per
 //      Client-Requests.md — an existing file someone already has.
 //   2. Generated in-app from the fields below, matching the client's real
@@ -51,9 +75,20 @@ export const projectDocuments = pgTable("project_documents", {
   projectId: uuid("project_id")
     .notNull()
     .references(() => projects.id, { onDelete: "cascade" }),
+  // Kept alongside projectId (rather than looked up through it) so a
+  // document is never ambiguous about which milestone it bills, and so
+  // deleting/reordering other milestones on the same project can't
+  // silently change which one a past document belonged to.
+  milestoneId: uuid("milestone_id")
+    .notNull()
+    .references(() => milestones.id, { onDelete: "cascade" }),
   type: documentTypeEnum("type").notNull(),
 
-  // Prefilled from the project at creation time, editable afterward.
+  // Prefilled from the project + milestone at creation time, editable
+  // afterward. "milestone" here is a text snapshot (the milestone's title
+  // at issue time), not a live reference — matches how title/price are
+  // already snapshotted, so a later milestone rename never rewrites a
+  // document that already went out.
   title: text("title").notNull(),
   milestone: text("milestone").notNull(),
   price: numeric("price", { precision: 14, scale: 2 }).notNull(),
@@ -102,5 +137,7 @@ export const projectDocuments = pgTable("project_documents", {
 
 export type Project = typeof projects.$inferSelect;
 export type NewProject = typeof projects.$inferInsert;
+export type Milestone = typeof milestones.$inferSelect;
+export type NewMilestone = typeof milestones.$inferInsert;
 export type ProjectDocument = typeof projectDocuments.$inferSelect;
 export type NewProjectDocument = typeof projectDocuments.$inferInsert;

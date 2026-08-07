@@ -64,14 +64,18 @@ Login is approval-based only. No MFA.
 Fields:
 
 - Project title
-- Milestone
-- Price
+- One or more milestones, each with:
+    - Milestone title
+    - Price
 
-This acts as a reminder for the user, but its real job is to save you from typing the same info twice when making the Invoice and Acknowledgement Receipt.
+A project can have as many milestones as the engagement actually has (e.g. "Project Mobilization," "Core Features Completion," "Final Deployment"), each billed separately. The project's total price is the sum of its milestones' prices — not entered directly.
+
+Each milestone acts as a reminder for the user, but its real job is to save you from typing the same info twice when making that milestone's Invoice and Acknowledgement Receipt.
 
 ## Invoice & AR
 
 - Lives on the same page as Projects, directly connected.
+- Each invoice/AR is tied to one specific milestone, not the project as a whole — a project with several milestones gets a separate invoice/AR per stage as each is billed.
 - Docs and PDF only.
 
 ## Activity
@@ -87,11 +91,11 @@ Kept simple. One glance, no charts just for show. Same view for everyone, supera
     - Allocated vs. spent
     - Each person's remaining split, if the Budget Splitter is on
 2. **Active projects**
-    - Ongoing projects with title, milestone, price
-    - Flags any with an unpaid invoice or pending AR
+    - Ongoing projects with title, milestone count, and total price (sum of its milestones)
+    - Flags any with an unpaid invoice or a completed milestone still pending its AR
 3. **Pending actions**
     - Registration requests waiting on superadmin (superadmin view only)
-    - Finished milestones with no invoice or AR made yet
+    - Finished milestones with no invoice or AR made yet (per milestone, not per project)
 4. **Recent activity**
     - Last 5 to 10 entries from the Activity log
 

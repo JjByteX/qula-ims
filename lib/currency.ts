@@ -11,10 +11,11 @@
 // server". Keeping the constant and the formatter here, with nothing
 // else in the file, makes it safe to import from either side.
 
-// No currency was specified anywhere in the docs (Client-Requests.md and
-// tech-stack.md are both silent on it), so this is a single constant to
-// change in one place rather than a guess baked into every display.
-export const CURRENCY_SYMBOL = "$";
+// Philippine peso — this is a Philippine engagement (Client-Requests.md
+// and the reference proposals price everything in ₱), so this is a
+// single constant to change in one place rather than a guess baked into
+// every display.
+export const CURRENCY_SYMBOL = "₱";
 
 // Matches the numeric(14,2) column: whole-number grouping, exactly two
 // decimals — this is a display formatter only, the raw string is what's

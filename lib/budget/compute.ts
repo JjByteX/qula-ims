@@ -1,6 +1,6 @@
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, and } from "drizzle-orm";
 import { db } from "@/db/client";
-import { budget, budgetSplits, expenses, users } from "@/db/schema";
+import { budget, budgetSplits, expenses, users, milestones, projectDocuments } from "@/db/schema";
 
 // Shared with app/api/budget/splitter/route.ts and the dashboard's budget
 // snapshot (phases-plan 5.1) — moved here so both read the exact same
@@ -25,6 +25,22 @@ export async function getActiveUsers() {
     .where(eq(users.status, "active"));
 }
 
+// Sum of paid milestones — a milestone counts once it has at least one
+// projectDocuments row of type "invoice" with isPaid = true. The invoice's
+// own amount is used directly (rather than re-joining back to the
+// milestone's price) since the two are guaranteed identical in this app
+// and the invoice amount is the more semantically correct field: it's
+// literally what was invoiced and paid.
+async function getPaidMilestonesTotal() {
+  const paidInvoices = await db
+    .select({ amount: projectDocuments.amount })
+    .from(projectDocuments)
+    .innerJoin(milestones, eq(projectDocuments.milestoneId, milestones.id))
+    .where(and(eq(projectDocuments.type, "invoice"), eq(projectDocuments.isPaid, true)));
+
+  return paidInvoices.reduce((sum, row) => sum + Number(row.amount ?? 0), 0);
+}
+
 export type BudgetSplit = {
   userId: string;
   firstName: string;
@@ -34,15 +50,28 @@ export type BudgetSplit = {
   amount: number;
 };
 
-// Computes each active user's dollar share of the remaining budget.
-// Always on (phases-plan 2.4 / Client-Requests.md: "Splits the budget
-// across team members"). Users with a stored override use that
-// percentage; everyone else splits whatever percentage is left over
-// equally. Recalculated on every read instead of being cached.
+// Computes each active user's dollar share of the team split pool, plus
+// the allocated-funds reserve's own remaining balance.
+//
+// Two pots, chained rather than independent:
+//   1. Paid milestones (invoice.isPaid = true) are the money that's come
+//      in.
+//   2. Allocated Funds is a reserve carved out of that income for a
+//      specific purpose; Expenses draw down that reserve. Its own
+//      remaining balance is `allocatedFunds - expensesTotal` — unchanged
+//      mechanically from before.
+//   3. What's left to split among the team is the milestone income minus
+//      the reserve taken out of it: `totalPaidMilestones - allocatedFunds`
+//      — not the reserve's remaining balance, the reserve amount itself,
+//      since that's what was set aside from the team's pool regardless of
+//      how much of it has been spent yet.
+//
+// Recalculated on every read instead of being cached.
 export async function computeSplits(): Promise<{
   remaining: number;
   allocatedFunds: number;
   expensesTotal: number;
+  splitPool: number;
   splits: BudgetSplit[];
 }> {
   const current = await getOrCreateBudget();
@@ -52,6 +81,9 @@ export async function computeSplits(): Promise<{
   const expensesTotal = expenseRows.reduce((sum, row) => sum + Number(row.amount), 0);
   const allocatedFunds = Number(current.allocatedFunds);
   const remaining = allocatedFunds - expensesTotal;
+
+  const totalPaidMilestones = await getPaidMilestonesTotal();
+  const splitPool = totalPaidMilestones - allocatedFunds;
 
   const overrides = activeUsers.length
     ? await db
@@ -84,9 +116,9 @@ export async function computeSplits(): Promise<{
       lastName: user.lastName,
       percentage,
       isManual: !!override?.percentage,
-      amount: (remaining * percentage) / 100,
+      amount: (splitPool * percentage) / 100,
     };
   });
 
-  return { remaining, allocatedFunds, expensesTotal, splits };
+  return { remaining, allocatedFunds, expensesTotal, splitPool, splits };
 }

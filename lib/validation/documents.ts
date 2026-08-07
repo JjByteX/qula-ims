@@ -57,17 +57,20 @@ export const invoiceDocumentSchema = z.object({
 
 export type InvoiceDocumentInput = z.infer<typeof invoiceDocumentSchema>;
 
-// Prefill override (phases-plan 3.3): title/milestone/price are prefilled
-// from the project when creating a document, but the person can edit them
-// before saving — e.g. a slightly different milestone wording for this
-// particular invoice than what's currently on the project record. All
-// optional: when a field is omitted, the create route falls back to the
-// live project's value, so this never blocks a create that doesn't touch
-// them. Deliberately separate from arDocumentSchema/invoiceDocumentSchema
-// (rather than folded in) so PATCH/edit — which reuses those two schemas —
-// never accepts a title/milestone/price change; retitling an issued
-// document is out of scope here.
+// Prefill override (phases-plan 3.3, revised for multi-milestone projects).
+// milestoneId picks which milestone this document bills — required, since
+// a project can now have several. title/milestone/price still prefill from
+// that milestone (and the project, for title) but the person can edit the
+// wording before saving — e.g. slightly different phrasing for this
+// particular invoice than what's currently on the milestone record. Text
+// fields are optional: when omitted, the create route falls back to the
+// live milestone's/project's value. Deliberately separate from
+// arDocumentSchema/invoiceDocumentSchema (rather than folded in) so
+// PATCH/edit — which reuses those two schemas — never accepts a
+// title/milestone/price/milestoneId change; retitling or rebilling an
+// issued document is out of scope here.
 export const documentPrefillOverrideSchema = z.object({
+  milestoneId: z.string().uuid("Select a milestone"),
   title: z.string().trim().min(1, "Title is required").optional(),
   milestone: z.string().trim().min(1, "Milestone is required").optional(),
   price: z
