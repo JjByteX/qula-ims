@@ -15,11 +15,14 @@
   --qula-warm-white: #fff8f4; /* Alternate background / hover surface */
   --qula-charcoal: #221f19; /* Primary text, dark foreground */
 
-  /* Semantic mapping to shadcn tokens (60/30/10 rule) */
-  --background: var(--qula-off-white); /* 60 - dominant surface */
+  /* Semantic mapping to shadcn tokens (60/30/10 rule) — inverted at the
+     person's request: cream is now the dominant page background (the
+     "yellow" surface) and off-white is the card surface, swapped from
+     the palette doc's original off-white-background/cream-card pairing. */
+  --background: var(--qula-cream); /* 60 - dominant surface */
   --foreground: var(--qula-charcoal);
 
-  --card: var(--qula-cream); /* 30 - secondary surface */
+  --card: var(--qula-off-white); /* 30 - secondary surface */
   --card-foreground: var(--qula-charcoal);
 
   --popover: var(--qula-off-white);
@@ -28,10 +31,13 @@
   --primary: var(--qula-charcoal);
   --primary-foreground: var(--qula-off-white);
 
-  --secondary: var(--qula-cream);
+  --secondary: var(--qula-off-white);
   --secondary-foreground: var(--qula-charcoal);
 
-  --muted: var(--qula-warm-white);
+  --muted: var(--qula-warm-white); /* hover surface — a step warmer than
+    the new off-white card background, without matching the cream page
+    background exactly (which would make hovered cards blend into the
+    page instead of reading as a distinct state). */
   --muted-foreground: color-mix(in srgb, var(--qula-charcoal) 60%, transparent);
 
   --accent: var(--qula-gold); /* 10 - accent, sparing use */

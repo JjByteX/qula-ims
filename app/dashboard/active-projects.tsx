@@ -24,9 +24,9 @@ export type ActiveProjectRow = {
 // already spotted the one they want.
 export function ActiveProjects({ projects }: { projects: ActiveProjectRow[] }) {
   return (
-    <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-4 p-6">
-        <Link href="/projects" className="flex items-center justify-between gap-4">
+    <Card className="flex h-full min-h-0 flex-col rounded-[var(--radius-sm)]">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+        <Link href="/projects" className="flex shrink-0 items-center justify-between gap-4">
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Active projects
           </span>
@@ -37,7 +37,7 @@ export function ActiveProjects({ projects }: { projects: ActiveProjectRow[] }) {
             No active projects yet.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-[var(--border)]">
+          <div className="flex min-h-0 flex-1 flex-col divide-y divide-[var(--border)] overflow-y-auto">
             {projects.map((project) => (
               <Link
                 key={project.id}

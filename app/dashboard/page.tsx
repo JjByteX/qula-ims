@@ -6,10 +6,10 @@ import { activityLog, expenses, milestones, projectDocuments, projects, users } 
 import { BudgetSection } from "./budget-section";
 import { ActiveProjects, type ActiveProjectRow } from "./active-projects";
 import {
-  PendingActions,
+  NotificationMenu,
   type MilestoneAwaitingDocument,
   type PendingRegistration,
-} from "./pending-actions";
+} from "./notification-menu";
 import { RecentActivity } from "./recent-activity";
 import { ProfileMenu } from "./profile-menu";
 
@@ -27,10 +27,13 @@ const RECENT_ACTIVITY_LIMIT = 10;
 // rather than a separate /budget page — Client-Requests.md never scopes
 // Budget as its own page, and per the card-fragmentation rule in
 // docs/ux-ui-guidelines.md the allocated funds, expenses, remaining
-// total, and split are one logical concept. Active projects (5.2),
-// pending actions (5.3), and recent activity (5.4) fill out the rest.
-// Navigation (5.5) is satisfied by each section already linking to its
-// full page — no separate component needed for that phase.
+// total, and split are one logical concept. Active projects (5.2) and
+// recent activity (5.4) fill out the rest of the grid; pending actions
+// (5.3) surfaces through the header's NotificationMenu instead of its
+// own card, since it's an alert to check rather than something read at
+// a glance alongside the other cards. Navigation (5.5) is satisfied by
+// each section already linking to its full page — no separate component
+// needed for that phase.
 export default async function DashboardPage() {
   const user = await requireUser();
 
@@ -128,6 +131,15 @@ export default async function DashboardPage() {
       .join(" "),
   }));
 
+  // Not-yet-earned milestones across every active project — surfaced in
+  // the compact split row (BudgetSection) as "what's left to earn",
+  // reusing allMilestones instead of a separate query.
+  const pendingMilestones = allMilestones.filter((m) => m.status !== "completed");
+  const pendingMilestoneCount = pendingMilestones.length;
+  const pendingMilestonesTotal = pendingMilestones
+    .reduce((sum, m) => sum + Number(m.price), 0)
+    .toFixed(2);
+
   // "Finished milestones with no invoice or AR made yet" (5.3) is broader
   // than 5.2's AR-pending badge: it fires on a missing invoice too, not
   // just a missing AR (either document type counts as the milestone
@@ -146,37 +158,55 @@ export default async function DashboardPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[var(--background)] px-6 py-10">
-      <div className="mx-auto flex w-full max-w-[1600px] flex-col gap-6">
-        <div className="flex items-center justify-between gap-4">
+    <main className="flex h-screen flex-col overflow-hidden bg-[var(--background)]">
+      <div className="mx-auto flex w-full max-w-[1600px] flex-1 flex-col gap-6 overflow-hidden px-6 pb-10">
+        {/* Header shares the same max-width container and side padding as
+            the card grid below, so the logo/subtitle align with the
+            grid's left edge and the profile menu aligns with its right
+            edge instead of tracking the viewport edges independently. */}
+        <div className="flex shrink-0 items-center justify-between gap-4 pt-10 pb-4">
           <div className="flex flex-col gap-1">
             {/* eslint-disable-next-line @next/next/no-img-element -- static
                 brand asset from /public, not a next/image candidate */}
-            <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto" />
+            <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto self-start" />
             <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
               Internal Management System
             </p>
           </div>
-          <ProfileMenu
-            user={{
-              firstName: user.firstName,
-              lastName: user.lastName,
-              profilePictureUrl: user.profilePictureUrl,
-            }}
-          />
+          <div className="flex items-center gap-2">
+            <NotificationMenu
+              registrations={registrations}
+              milestonesAwaitingDocument={milestonesAwaitingDocument}
+            />
+            <ProfileMenu
+              user={{
+                firstName: user.firstName,
+                lastName: user.lastName,
+                profilePictureUrl: user.profilePictureUrl,
+              }}
+            />
+          </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-          <BudgetSection
-            initialAllocatedFunds={allocatedFunds}
-            initialExpenses={expenseList}
-            initialSplitterState={snapshot}
-          />
+        {/* Grid fills the remaining viewport height. Budget (with its
+            split, allocated funds, and expenses) spans both rows in the
+            left column (row-span-2, 1x2) now that pending actions has
+            moved to the header notification menu — active projects and
+            recent activity stack in the right column instead. min-h-0
+            lets a grid item shrink below its content size, which is what
+            allows the scroll areas inside each card to kick in instead of
+            the row growing to fit the tallest card's content. */}
+        <div className="grid min-h-0 flex-1 grid-cols-1 grid-rows-2 gap-6 lg:grid-cols-2">
+          <div className="h-full min-h-0 lg:row-span-2">
+            <BudgetSection
+              initialAllocatedFunds={allocatedFunds}
+              initialExpenses={expenseList}
+              initialSplitterState={snapshot}
+              pendingMilestoneCount={pendingMilestoneCount}
+              pendingMilestonesTotal={pendingMilestonesTotal}
+            />
+          </div>
           <ActiveProjects projects={projectRows} />
-          <PendingActions
-            registrations={registrations}
-            milestonesAwaitingDocument={milestonesAwaitingDocument}
-          />
           <RecentActivity entries={recentActivity} />
         </div>
       </div>

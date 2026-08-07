@@ -27,6 +27,7 @@ export type Expense = {
 
 type SplitterState = {
   remaining: number;
+  splitPool: number;
   splits: BudgetSplit[];
 };
 
@@ -39,6 +40,25 @@ function formatDate(value: string): string {
     month: "short",
     day: "numeric",
   });
+}
+
+// "J. Doe" — used only in the compact split legend, where several names
+// sit on one line and need to stay short. Full names are still used
+// everywhere else (editing form, profile pages) since that's the
+// legally/administratively correct form.
+function shortName(firstName: string, lastName: string): string {
+  return `${firstName.charAt(0)}. ${lastName}`;
+}
+
+// Split-bar colors — deliberately outside the mandatory five (gold/cream/
+// off-white/warm-white/charcoal) at the person's request, since gold vs.
+// muted-charcoal-tints read as "one accent + shades of grey" once there
+// are 2-3 people to tell apart at a glance. Cycles if there are ever more
+// than three team members.
+const SPLIT_COLORS = ["#5B7B7A", "#B0654A", "#6E5C8A"];
+
+function splitColor(index: number): string {
+  return SPLIT_COLORS[index % SPLIT_COLORS.length];
 }
 
 // Budget (phases-plan 2 / Client-Requests.md) folded into the dashboard
@@ -58,10 +78,14 @@ export function BudgetSection({
   initialAllocatedFunds,
   initialExpenses,
   initialSplitterState,
+  pendingMilestoneCount,
+  pendingMilestonesTotal,
 }: {
   initialAllocatedFunds: string;
   initialExpenses: Expense[];
   initialSplitterState: SplitterState;
+  pendingMilestoneCount: number;
+  pendingMilestonesTotal: string;
 }) {
   const [allocatedFunds, setAllocatedFunds] = useState(initialAllocatedFunds);
   const [expenses, setExpenses] = useState(initialExpenses);
@@ -243,8 +267,8 @@ export function BudgetSection({
   }
 
   return (
-    <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-6 p-6">
+    <Card className="flex h-full min-h-0 flex-col rounded-[var(--radius-sm)]">
+      <CardContent className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
         {/* Budget split — always on */}
         {splitterState.splits.length > 0 && (
           <div className="flex flex-col gap-4">
@@ -324,26 +348,70 @@ export function BudgetSection({
                 </div>
               </div>
             ) : (
-              <div className="flex flex-col divide-y divide-[var(--border)]">
-                {splitterState.splits.map((split) => (
-                  <div
-                    key={split.userId}
-                    className="flex items-center justify-between gap-4 py-3 first:pt-0 last:pb-0"
-                  >
-                    <div className="flex flex-col gap-0.5">
-                      <span className="text-[var(--text-base)] text-[var(--foreground)]">
-                        {split.firstName} {split.lastName}
-                      </span>
-                      <span className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                        {split.percentage.toFixed(1)}%{split.isManual ? " · custom" : ""}
+              <div className="flex flex-col gap-3">
+                {/* Segmented bar: one flush horizontal line, each person's
+                    share sized by percentage. Compact replacement for the
+                    old one-row-per-person list — same information (name,
+                    percentage, amount), far less vertical space. Colors
+                    come from SPLIT_COLORS, not the mandatory gold/charcoal
+                    pair, so 2-3 people stay visually distinct at a glance. */}
+                <div className="flex h-2 w-full overflow-hidden rounded-[var(--radius-sm)] bg-[var(--muted)]">
+                  {splitterState.splits.map((split, index) => (
+                    <div
+                      key={split.userId}
+                      className="h-full first:rounded-l-[var(--radius-sm)] last:rounded-r-[var(--radius-sm)]"
+                      style={{
+                        width: `${Math.max(split.percentage, 0)}%`,
+                        backgroundColor: splitColor(index),
+                      }}
+                    />
+                  ))}
+                </div>
+
+                {/* Legend columns share the bar's proportions (same
+                    percentage-based width per person), so each person's
+                    name/amount sits centered directly under their own
+                    segment instead of flowing as one inline row. */}
+                <div className="flex w-full">
+                  {splitterState.splits.map((split, index) => (
+                    <div
+                      key={split.userId}
+                      className="flex flex-col items-center gap-1 px-1 text-center"
+                      style={{ width: `${Math.max(split.percentage, 0)}%` }}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className="size-2 shrink-0 rounded-full"
+                          style={{ backgroundColor: splitColor(index) }}
+                          aria-hidden="true"
+                        />
+                        <span className="truncate text-[var(--text-base)] text-[var(--foreground)]">
+                          {shortName(split.firstName, split.lastName)} ({split.percentage.toFixed(0)}%
+                          {split.isManual ? " · custom" : ""})
+                        </span>
+                      </div>
+                      <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
+                        {CURRENCY_SYMBOL}
+                        {formatCurrency(String(split.amount))}
                       </span>
                     </div>
-                    <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
-                      {CURRENCY_SYMBOL}
-                      {formatCurrency(String(split.amount))}
+                  ))}
+                </div>
+
+                <div className="flex items-center justify-between text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                  <span>
+                    Paid to date: {CURRENCY_SYMBOL}
+                    {formatCurrency(String(splitterState.splitPool))}
+                  </span>
+                  {pendingMilestoneCount > 0 && (
+                    <span>
+                      Outstanding: {CURRENCY_SYMBOL}
+                      {formatCurrency(pendingMilestonesTotal)} ·{" "}
+                      {pendingMilestoneCount}{" "}
+                      {pendingMilestoneCount === 1 ? "milestone" : "milestones"} remaining
                     </span>
-                  </div>
-                ))}
+                  )}
+                </div>
               </div>
             )}
           </div>

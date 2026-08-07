@@ -20,10 +20,10 @@ export type RecentActivityEntry = {
 // card links to /activity (phases-plan 5.5).
 export function RecentActivity({ entries }: { entries: RecentActivityEntry[] }) {
   return (
-    <Link href="/activity" className="block">
-      <Card className="rounded-[var(--radius-lg)] transition-colors hover:bg-[var(--muted)]">
-        <CardContent className="flex flex-col gap-4 p-6">
-          <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+    <Link href="/activity" className="block h-full min-h-0">
+      <Card className="flex h-full min-h-0 flex-col rounded-[var(--radius-sm)] transition-colors hover:bg-[var(--muted)]">
+        <CardContent className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+          <span className="shrink-0 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
             Recent activity
           </span>
 
@@ -32,7 +32,7 @@ export function RecentActivity({ entries }: { entries: RecentActivityEntry[] }) 
               No activity yet.
             </p>
           ) : (
-            <div className="flex flex-col divide-y divide-[var(--border)]">
+            <div className="flex min-h-0 flex-1 flex-col divide-y divide-[var(--border)] overflow-y-auto">
               {entries.map((entry) => {
                 const detail = formatDetail(entry.detail);
                 return (
