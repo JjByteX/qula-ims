@@ -15,15 +15,32 @@ import {
   AlertCircle,
   ChevronUp,
   ChevronDown,
+  MoreVertical,
+  FileText,
+  Receipt,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import {
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
+} from "@/components/ui/dropdown-menu";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { milestoneSchema, type MilestoneInput } from "@/lib/validation/projects";
 import type { Milestone, ProjectDocument } from "@/db/schema";
+
+// Invoice/AR creation, folded into the milestone row (Projects page
+// request: one card, not two — the 3-dot menu next to Delete is the new
+// entry point instead of the old separate "Invoices & Acknowledgement
+// Receipts" card with its own milestone-picker dropdown). The menu item
+// creates the document immediately (prefilled from the milestone, see
+// handleCreateDocument) and navigates to its page rather than expanding an
+// inline form here.
 
 // Milestones section (phases-plan 3.1/3.4, revised for multi-milestone
 // projects). Replaces the old single MilestoneStatus toggle with an
@@ -116,7 +133,7 @@ function MilestoneForm({
 export function MilestonesSection({
   projectId,
   initialMilestones,
-  documents,
+  documents: initialDocuments,
 }: {
   projectId: string;
   initialMilestones: Milestone[];
@@ -130,9 +147,40 @@ export function MilestonesSection({
   const [editingId, setEditingId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState(initialDocuments);
+  const [creatingDocFor, setCreatingDocFor] = useState<string | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
 
   function hasDocument(milestoneId: string) {
     return documents.some((doc) => doc.milestoneId === milestoneId);
+  }
+
+  // Menu item now creates the document immediately (prefilled from the
+  // milestone, everything else blank) and takes the person straight to its
+  // page, where the existing Edit action (DocumentToolbar) is how the rest
+  // of the fields get filled in — no inline form on this page anymore.
+  async function handleCreateDocument(milestoneId: string, type: "invoice" | "ar") {
+    setCreatingDocFor(milestoneId);
+    setDocError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/documents`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type, milestoneId }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setDocError(body?.error ?? "Something went wrong. Try again.");
+        return;
+      }
+      const { document } = await res.json();
+      setDocuments((prev) => [document, ...prev]);
+      router.push(`/projects/${projectId}/documents/${document.id}`);
+    } catch {
+      setDocError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setCreatingDocFor(null);
+    }
   }
 
   async function handleCreate(data: MilestoneInput) {
@@ -245,7 +293,7 @@ export function MilestonesSection({
       <CardContent className="flex flex-col gap-4 p-6">
         <div className="flex items-center justify-between">
           <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
-            Milestones
+            Milestones &amp; Documents
           </span>
           <div className="flex items-center gap-3">
             <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
@@ -273,6 +321,7 @@ export function MilestonesSection({
         )}
 
         {rowError && <p className="text-[var(--text-sm)] text-[var(--destructive)]">{rowError}</p>}
+        {docError && <p className="text-[var(--text-sm)] text-[var(--destructive)]">{docError}</p>}
 
         {milestones.length === 0 && !isAdding ? (
           <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
@@ -291,9 +340,9 @@ export function MilestonesSection({
                   />
                 </div>
               ) : (
+                <div key={milestone.id} className="flex flex-col py-4 first:pt-0 last:pb-0">
                 <div
-                  key={milestone.id}
-                  className="flex items-center justify-between gap-4 py-4 first:pt-0 last:pb-0"
+                  className="flex items-center justify-between gap-4"
                 >
                   <div className="flex items-center gap-2">
                     <div className="flex flex-col">
@@ -370,7 +419,34 @@ export function MilestonesSection({
                     >
                       <Trash2 className="size-4" aria-hidden="true" />
                     </Button>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Milestone document options"
+                          disabled={creatingDocFor === milestone.id}
+                        >
+                          <MoreVertical className="size-4" aria-hidden="true" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onSelect={() => handleCreateDocument(milestone.id, "invoice")}
+                        >
+                          <FileText className="size-4" aria-hidden="true" />
+                          Invoice
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onSelect={() => handleCreateDocument(milestone.id, "ar")}
+                        >
+                          <Receipt className="size-4" aria-hidden="true" />
+                          Acknowledgement Receipt
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
                   </div>
+                </div>
                 </div>
               ),
             )}

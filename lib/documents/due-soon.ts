@@ -3,8 +3,8 @@
 // timing concept in the schema (db/schema/projects.ts projectDocuments.dueDate).
 // "Apply this setting wherever notification timing is used" (6.1) means
 // this one function, used by every page that flags an invoice as due
-// soon: app/projects/[id]/project-documents-section.tsx and the
-// dashboard's active-projects card.
+// soon: app/projects/[id]/milestones-section.tsx and the dashboard's
+// active-projects card.
 //
 // An invoice already marked paid is never "due soon" — the notification
 // exists to prompt payment, and a paid invoice needs no prompting.

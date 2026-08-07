@@ -31,10 +31,16 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 // separate flow). title/milestone/price are prefilled from the project +
 // selected milestone (phases-plan 3.3) and used as-is unless the request
 // includes its own value for one of them — in which case that override
-// wins. This is what makes the prefill "editable before saving" rather
-// than a hard, silent overwrite: the client (ProjectDocumentsSection)
-// shows these fields on the create form seeded from the milestone, and
-// only sends a field here if the person changed it.
+// wins.
+//
+// The milestone's 3-dot menu creates the document immediately with just
+// { type, milestoneId } — the rest of the fields (invoice/AR number,
+// amounts, etc.) are blank at creation and filled in later on the
+// document's own page (PATCH .../documents/[documentId], which does
+// enforce the full arDocumentSchema/invoiceDocumentSchema before saving).
+// So only the prefill fields are validated here; any generated-document
+// fields included in the body are applied as-is, unvalidated, same as
+// they'd end up blank if omitted.
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await authorizeUser();
   if (!auth.ok) return auth.response;
@@ -67,9 +73,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   const schema = body.type === "ar" ? arDocumentSchema : invoiceDocumentSchema;
-  const parsed = schema.safeParse(body);
-  if (!parsed.success) {
-    const message = parsed.error.issues[0]?.message ?? "Invalid request.";
+  const fieldsParsed = schema.partial().safeParse(body);
+  if (!fieldsParsed.success) {
+    const message = fieldsParsed.error.issues[0]?.message ?? "Invalid request.";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
@@ -82,7 +88,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       title: overrideParsed.data.title ?? project.title,
       milestone: overrideParsed.data.milestone ?? milestone.title,
       price: overrideParsed.data.price ?? milestone.price,
-      ...parsed.data,
+      ...fieldsParsed.data,
       createdByUserId: auth.user.id,
     })
     .returning();
