@@ -1,18 +1,17 @@
-import { pgTable, uuid, integer, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, uuid, timestamp } from "drizzle-orm/pg-core";
 import { users } from "./users";
 
-// Single-row settings table. Only one setting exists today (notification
-// lead time); more rows aren't needed until a second setting appears.
+// Single-row settings table. Only one setting exists today (who
+// currently receives payment); more rows aren't needed until a second
+// setting appears.
 export const appSettings = pgTable("app_settings", {
   id: uuid("id").primaryKey().defaultRandom(),
-  notificationDaysBefore: integer("notification_days_before").notNull().default(3),
   // Who currently receives payment (docs/phases-plan-revision-1.md Phase
-  // 12) — a single-row setting rather than a column on users, same
-  // reasoning as this table's existing notificationDaysBefore: it's an
-  // org-wide "who's currently getting paid" switch, not per-user data.
-  // Nullable — nobody has to be designated; Phase 9's invoice prefill
-  // just falls back to the project's own billing defaults until someone
-  // is.
+  // 12) — a single-row setting rather than a column on users, since it's
+  // an org-wide "who's currently getting paid" switch, not per-user
+  // data. Nullable — nobody has to be designated; with no payer
+  // designated, invoice/AR creation just leaves the payer-linked fields
+  // blank (docs/phases-plan-revision-2.md Phase 14/16).
   designatedPayerUserId: uuid("designated_payer_user_id").references(() => users.id),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });

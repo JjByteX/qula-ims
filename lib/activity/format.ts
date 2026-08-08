@@ -52,7 +52,6 @@ const ACTION_LABELS: Record<string, string> = {
   "ar.created": "created a receipt",
   "ar.edited": "updated a receipt",
   "ar.refreshed": "refreshed a receipt",
-  "settings.notification_days_updated": "updated the reminder timing",
   "settings.designated_payer_updated": "changed who receives payment",
 };
 
@@ -178,8 +177,6 @@ const DETAIL_FORMATTERS: Record<string, (detail: Record<string, unknown>) => str
     typeof d.overrideCount === "number"
       ? `${d.overrideCount} custom ${d.overrideCount === 1 ? "share" : "shares"} set`
       : null,
-  "settings.notification_days_updated": (d) =>
-    d.previous !== undefined && d.next !== undefined ? `${d.previous} to ${d.next} days` : null,
   // designated_payer_updated's previous/next are user IDs, not names —
   // this formatter has no user lookup available, and a raw ID is worse
   // than nothing for a non-technical reader, so this deliberately shows

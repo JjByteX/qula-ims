@@ -56,7 +56,6 @@ const ACTIONS = [
   "ar.created",
   "ar.edited",
   "ar.refreshed",
-  "settings.notification_days_updated",
   "settings.designated_payer_updated",
 ] as const;
 

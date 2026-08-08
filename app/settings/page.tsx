@@ -6,11 +6,10 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { getOrCreateAppSettings } from "@/lib/settings/get";
 import { Card, CardContent } from "@/components/ui/card";
-import { NotificationSettingsForm } from "./notification-settings-form";
 import { DesignatedPayerCard } from "./designated-payer-card";
 
 // Settings (phases-plan 6). Open to any signed-in user — Client-Requests.md
-// lists both items (notification lead time, profile edit) with no
+// lists both items (who receives payment, profile edit) with no
 // superadmin restriction, unlike account creation or approval.
 export default async function SettingsPage() {
   const user = await requireUser();
@@ -52,11 +51,9 @@ export default async function SettingsPage() {
             Settings
           </h1>
           <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            Notification timing and your profile.
+            Who receives payment and your profile.
           </p>
         </div>
-
-        <NotificationSettingsForm initialDaysBefore={settings.notificationDaysBefore} />
 
         <DesignatedPayerCard
           users={payerOptions}

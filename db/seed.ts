@@ -172,9 +172,11 @@ async function seedAppSettings() {
   const [existing] = await db.select().from(schema.appSettings).limit(1);
   if (existing) return;
 
-  await db.insert(schema.appSettings).values({
-    notificationDaysBefore: 3,
-  });
+  // No notificationDaysBefore anymore (docs/phases-plan-revision-2.md
+  // Phase 20 removed it) and designatedPayerUserId is nullable with no
+  // default to seed — this just ensures the single settings row exists,
+  // same as getOrCreateAppSettings() would do lazily on first access.
+  await db.insert(schema.appSettings).values({});
 }
 
 // Demo project matching the actual client proposal ("Bar and Kitchen

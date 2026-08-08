@@ -558,6 +558,60 @@ design (that's what Refresh means), so listing the same fields on every
 refresh is accurate, not noise, and there's no "before" values to diff
 against in the same sense.
 
+## Phase 20, Remove Notification Lead Time
+
+### 20.1 Problem
+The notification lead time setting (Settings > "Days before") let a
+person type a number and save it, but that number had no visible effect
+anywhere in the live app. Tracing every reference: its only consumer,
+`isInvoiceDueSoon()` (`lib/documents/due-soon.ts`), was only ever called
+from `app/projects/[id]/project-documents-section.tsx` — a component no
+page imports or renders (the same dead-code file referenced throughout
+Phase 9.4, 14.5, and 16). No cron job, scheduled task, or email digest
+reads this value either — the app's only outgoing emails are
+registration and password-reset. Changing this setting from 3 to 10 days
+and saving produced a success message and genuinely nothing else.
+Client-Requests.md's original ask ("Set the number of days before the
+notification") was implemented as a settings field, but the actual
+notification it was meant to configure was never built on top of it.
+
+### 20.2 What was removed
+- `db/schema/settings.ts`: dropped `notificationDaysBefore`. Migration
+  0009 drops the column.
+- `lib/documents/due-soon.ts`: deleted. `isInvoiceDueSoon()` was its only
+  export and its only caller is gone too.
+- `lib/validation/settings.ts`: removed `notificationSettingsSchema`
+  and `NotificationSettingsInput`. `designatedPayerSchema` (a separate
+  concern sharing the same file) is untouched.
+- `app/settings/notification-settings-form.tsx`: deleted — the whole
+  Settings card for this.
+- `app/settings/page.tsx`: removed the import and render of that form,
+  and updated the page's subtitle and comment, which described this
+  setting as still current.
+- `app/api/settings/route.ts`: removed the `PATCH` handler entirely
+  (its only purpose was updating this setting) — `GET` is untouched,
+  still shared by this route and the designated-payer card.
+- `app/projects/[id]/project-documents-section.tsx`: removed the
+  `isInvoiceDueSoon` import, the `notificationDaysBefore` prop, and the
+  "Due soon" badge that depended on it — kept in sync per the same
+  precedent this dead-code file has followed all session, even though
+  nothing renders it.
+- `lib/activity/format.ts` / `activity-log-list.tsx`: removed
+  `settings.notification_days_updated` from `ACTION_LABELS` and the
+  `ACTIONS` filter list (re-verified both lists still match exactly,
+  29/29, same check as Phase 19).
+- `db/seed.ts`: `seedAppSettings()` no longer seeds a value for the
+  removed column; still ensures the single settings row exists.
+- `lib/settings/get.ts`: fixed a comment that described the removed
+  setting as current.
+
+### 20.3 What doesn't change
+- `designatedPayerUserId` and everything around it (Settings > "Who
+  receives payment", Phase 12.3) — a completely separate setting on the
+  same table, untouched.
+- `app/api/settings/designated-payer/route.ts` — its own dedicated
+  route, never touched this setting to begin with.
+
 ## Out of Scope
 
 - Multiple simultaneous designated payers, or a history of past payers
