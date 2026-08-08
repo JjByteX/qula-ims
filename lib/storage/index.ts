@@ -1,4 +1,4 @@
-export { r2Client, R2_BUCKET_NAME } from "./client";
+export { r2Client, R2_BUCKET_NAME, hasR2Config } from "./client";
 export {
   StorageValidationError,
   uploadProfilePicture,

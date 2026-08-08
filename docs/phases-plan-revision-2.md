@@ -365,6 +365,52 @@ mark-paid/mark-unpaid action endpoints:
   place for hand-editing anything Refresh doesn't cover (or overriding
   what Refresh just set, same as always).
 
+## Phase 17, Local Storage Fallback + .gitignore
+
+### 17.1 Problem
+`lib/storage/client.ts` threw at import time if any R2 env var was
+missing — and since `app/api/users/[id]/route.ts` (and other routes)
+import upload functions unconditionally, this broke *any* profile save,
+not just ones that touched a file upload. Running the app locally
+required a Cloudflare R2 account before anything as basic as editing a
+profile's name would work. Separately, the repo had no `.gitignore` at
+all, so nothing stopped `node_modules`, `.next`, or a real `.env` with
+live secrets from being committed.
+
+### 17.2 Local-disk storage driver
+- New `lib/storage/local.ts`: `putObjectLocal`/`deleteFileLocal`/
+  `getPublicUrlLocal`, writing to and serving from `public/uploads`
+  (Next.js serves that directory's contents as static assets
+  automatically, at a URL path matching the file's path on disk — no
+  extra route needed).
+- `lib/storage/client.ts`: replaced the unconditional throw with an
+  exported `hasR2Config` boolean (all five R2 vars present, including
+  `R2_PUBLIC_HOSTNAME`, previously checked separately only inside
+  `getPublicUrl`). `r2Client` is only constructed when `hasR2Config` is
+  true.
+- `lib/storage/upload.ts`: `putObject`/`deleteFile`/`getPublicUrl`
+  (the three internal seams every upload function already funneled
+  through) branch on `hasR2Config` — R2 when configured, local disk
+  otherwise. No new env var to set on purpose; the switch is automatic.
+- Local disk is for local dev only — `public/uploads` isn't a real
+  persistent object store on most hosts. R2 remains the only supported
+  path for anything beyond that.
+
+### 17.3 .gitignore
+New `.gitignore`: `node_modules`, `.next`/`out` build output, all `.env*`
+variants except `.env.example` (which stays tracked as the template),
+`public/uploads/*` except a tracked `.gitkeep` (so the folder exists in a
+fresh checkout without committing anyone's local test uploads),
+`next-env.d.ts` (Next's own auto-regenerated file), and standard OS/
+editor cruft.
+
+### 17.4 What doesn't change
+- Production/anything with real R2 credentials set — behavior is
+  identical to before, just reached via the `hasR2Config` branch instead
+  of unconditionally.
+- Every upload function's own validation (file type, size limits) —
+  unchanged; only where the bytes end up differs.
+
 ## Out of Scope
 
 - Multiple simultaneous designated payers, or a history of past payers

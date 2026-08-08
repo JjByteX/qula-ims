@@ -1,0 +1,4 @@
+This folder holds local-disk uploads (lib/storage/local.ts), used
+automatically when R2 isn't configured. Its contents are gitignored —
+only this placeholder is tracked, so the folder exists in a fresh
+checkout without committing anyone's local test uploads.

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { PutObjectCommand, DeleteObjectCommand } from "@aws-sdk/client-s3";
-import { r2Client, R2_BUCKET_NAME } from "./client";
+import { r2Client, R2_BUCKET_NAME, hasR2Config } from "./client";
+import { putObjectLocal, deleteFileLocal, getPublicUrlLocal } from "./local";
 
 // Thrown for bad input (wrong type, too large) so callers can turn it into
 // a 400 response. Anything else (network, credentials) is a real failure
@@ -149,9 +150,17 @@ export async function uploadPaymentSignature(params: {
 }
 
 // --- Shared helpers -----------------------------------------------------
+// Both drivers (R2 and local-disk) implement the same three operations;
+// which one runs is decided once, here, by hasR2Config — every upload
+// function above calls these without knowing or caring which driver is
+// actually behind them.
 
 async function putObject(key: string, body: Buffer, contentType: string): Promise<void> {
-  await r2Client.send(
+  if (!hasR2Config) {
+    await putObjectLocal(key, body);
+    return;
+  }
+  await r2Client!.send(
     new PutObjectCommand({
       Bucket: R2_BUCKET_NAME,
       Key: key,
@@ -163,13 +172,18 @@ async function putObject(key: string, body: Buffer, contentType: string): Promis
 
 // Removes a stored file, e.g. an old profile picture being replaced.
 export async function deleteFile(key: string): Promise<void> {
-  await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
+  if (!hasR2Config) {
+    await deleteFileLocal(key);
+    return;
+  }
+  await r2Client!.send(new DeleteObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key }));
 }
 
 export function getPublicUrl(key: string): string {
-  const hostname = process.env.R2_PUBLIC_HOSTNAME;
-  if (!hostname) {
-    throw new Error("R2_PUBLIC_HOSTNAME is not set. Copy .env.example to .env first.");
+  if (!hasR2Config) {
+    return getPublicUrlLocal(key);
   }
-  return `https://${hostname}/${key}`;
+  // hasR2Config already confirmed R2_PUBLIC_HOSTNAME is set (client.ts's
+  // requiredEnv includes it), so this is always defined on this branch.
+  return `https://${process.env.R2_PUBLIC_HOSTNAME}/${key}`;
 }
