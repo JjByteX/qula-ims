@@ -15,6 +15,8 @@ export async function getProjectsWithComputedPrice(status: "active" | "archived"
       id: projects.id,
       title: projects.title,
       status: projects.status,
+      billedToName: projects.billedToName,
+      billedToAttention: projects.billedToAttention,
       createdByUserId: projects.createdByUserId,
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,

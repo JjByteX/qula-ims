@@ -24,6 +24,33 @@ export const projects = pgTable("projects", {
   id: uuid("id").primaryKey().defaultRandom(),
   title: text("title").notNull(),
   status: projectStatusEnum("status").notNull().default("active"),
+
+  // Billing defaults (Client-Requests.md revision: "connect projects to
+  // invoices/ARs so we don't have to manually input everytime"). Same
+  // column shape as the matching fields on project_documents below, so a
+  // value copies straight across with no reshaping when a document is
+  // created for one of this project's milestones. Editing these later
+  // never rewrites a document already generated: documents snapshot the
+  // value at creation time, same as they already snapshot milestone
+  // title/price.
+  //
+  // billedToName is required (docs/phases-plan-revision-2.md Phase 13) —
+  // every project has a client, so leaving this blank was never a real
+  // state, just an unenforced one. billedToAttention stays nullable: a
+  // specific contact person can't be guessed and isn't always known up
+  // front, same as invoiceDocumentSchema not requiring it either.
+  //
+  // The four payment columns Phase 8 originally added here
+  // (paymentMethod/paymentAccountName/paymentBank/paymentAccountNumber)
+  // were removed in Phase 14 — that info now lives in exactly one place,
+  // each user's own payment profile (users.paymentMethod etc., in
+  // db/schema/users.ts), selected via the "Who receives payment"
+  // designated-payer switch in Settings. POST /api/projects/[id]/documents
+  // reads the designated payer's profile directly; a project never needs
+  // its own copy of the same four fields.
+  billedToName: text("billed_to_name").notNull(),
+  billedToAttention: text("billed_to_attention"),
+
   createdByUserId: uuid("created_by_user_id")
     .notNull()
     .references(() => users.id),
@@ -110,6 +137,13 @@ export const projectDocuments = pgTable("project_documents", {
   remainingBalance: numeric("remaining_balance", { precision: 14, scale: 2 }),
   receivedByName: text("received_by_name"),
   receivedByTitle: text("received_by_title"),
+  // Snapshot of the designated payer's signature image
+  // (docs/phases-plan-revision-2.md Phase 16), same idea as invoice's
+  // signatureUrl just below but a separate column — an AR and an invoice
+  // for the same milestone are independent rows with independent
+  // snapshots, so refreshing one's payer info can never affect the
+  // other's. Only meaningful for type = "ar".
+  receivedBySignatureUrl: text("received_by_signature_url"),
 
   // --- Invoice-only --------------------------------------------------------
   billedToName: text("billed_to_name"),
@@ -121,7 +155,14 @@ export const projectDocuments = pgTable("project_documents", {
   paymentAccountName: text("payment_account_name"),
   paymentBank: text("payment_bank"),
   paymentAccountNumber: text("payment_account_number"),
-  paymentReferenceNote: text("payment_reference_note"),
+  // Snapshot of the designated payer's signature image at the moment
+  // this invoice was created (docs/phases-plan-revision-1.md Phase
+  // 12.4) — set once, alongside issuedBy, never live-linked to the
+  // user's current paymentSignatureUrl, so a later payer change or
+  // profile edit can't alter a document that already went out. Only
+  // meaningful for type = "invoice"; ARs use receivedBySignatureUrl
+  // above instead.
+  signatureUrl: text("signature_url"),
   qrCodeUrl: text("qr_code_url"), // uploaded QR image, not generated
   issuedBy: text("issued_by"),
 

@@ -1,0 +1,615 @@
+  <!DOCTYPE html>
+  <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Jj Bassig — Aspiring Full Stack Software Engineer. BSIT 3rd Year, Pamantasan ng Lungsod ng Pasig." />
+    <meta name="author" content="Jj Sanchez Bassig" />
+
+    <title>JJ BASSIG · Full Stack Developer</title>
+
+    <link rel="icon" href="assets/icons/favicon.ico" type="image/x-icon" />
+    <link rel="stylesheet" href="css/main.css" />
+    <script>
+      /* Set the theme attribute before first paint so the page (and the
+         intro/splash overlay) never flashes dark before switching to light.
+         Mirrors the fallback logic in js/theme.js: default to light unless
+         the visitor previously chose dark. */
+      (function () {
+        var saved = localStorage.getItem('jj-portfolio-theme');
+        document.documentElement.setAttribute('data-theme', saved === 'dark' ? 'dark' : 'light');
+      })();
+    </script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vanta@latest/dist/vanta.net.min.js"></script>
+  </head>
+  <body>
+   <div id="cursor-dot"></div>
+<div id="cursor-ring"></div>
+
+<div id="introOverlay">
+  <div id="introTerminal">
+    <div class="intro-line" id="iLine1"></div>
+    <div class="intro-line" id="iLine2"></div>
+    <div class="intro-line" id="iLine3"></div>
+    <div class="intro-line" id="iLine4"></div>
+    <div class="intro-progress"><div id="introBar"></div></div>
+  </div>
+</div>
+
+    <div id="vanta-bg" aria-hidden="true"></div>
+
+    <!-- ─── NAVIGATION ───────────────────────────────── -->
+    <nav>
+      <div class="nav-logo">JJ_BASSIG</div>
+      <div class="nav-links">
+        <a href="#about">ABOUT</a>
+        <a href="#skills">SKILLS</a>
+        <a href="#projects">PROJECTS</a>
+        <a href="#contact">CONTACT</a>
+      </div>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle theme">
+        <span class="toggle-icon">◑</span>
+        <span class="toggle-label">LIGHT</span>
+      </button>
+    </nav>
+
+    <!-- ─── HERO ─────────────────────────────────────── -->
+    <section id="hero">
+      <p class="hero-tag">FULL STACK DEVELOPER · BSIT 3RD YEAR</p>
+      <div class="hero-name">
+        <div class="first">JJ</div>
+        <div class="last glitch" data-text="BASSIG">BASSIG</div>
+      </div>
+      <p class="hero-role">
+        <span class="accent">@JjByteX</span> · Pamantasan ng Lungsod ng Pasig · Pasig, PH
+      </p>
+<p class="hero-tagline" id="heroTagline" data-type="I build systems that respond to people."></p>
+      <div class="hero-cta">
+        <a href="#projects" class="btn btn-primary">VIEW PROJECTS</a>
+        <a href="#contact" class="btn btn-outline">CONTACT ME</a>
+      </div>
+
+
+<div id="heroFace" aria-hidden="true">
+<div class="hf-scanline"></div>
+  <div class="hf-brow-l"></div>
+  <div class="hf-brow-r"></div>
+  
+  <div class="hf-eye hf-eye-l"><div class="hf-pupil"></div></div>
+  <div class="hf-eye hf-eye-r"><div class="hf-pupil"></div></div>
+  
+  <div class="hf-mouth"></div>
+  <div class="hf-text"></div>
+  <span class="hf-frame-label">SYS://UNIT_01</span>
+</div>
+    </section>
+
+    <div class="div-line" aria-hidden="true"></div>
+
+    <!-- ─── ABOUT ─────────────────────────────────────── -->
+    <section id="about">
+      <p class="section-label">01 · ABOUT</p>
+<h2 class="section-title fade-up" data-ghost="ABOUT">ABOUT <span>ME</span></h2>
+
+      <div class="about-grid">
+        <div class="fade-up">
+          <div class="about-photo-wrap hud-box">
+            <div class="hud-inner">
+              <img src="assets/images/profile.png" alt="Jj Bassig" />
+            </div>
+          </div>
+        </div>
+<div class="blur-in" style="transition-delay: .15s">
+  <div class="about-text">
+            <p>I'm <strong>Jj</strong>, a BSIT 3rd-year student and a RealLife BGC and Pasig City scholar. I started with video game commands, then hosting servers, and now developing software.</p>
+<p>I learn by building, breaking, and asking what's still missing. I study how enterprise systems solve problems, then refine my approach especially with databases and backend systems, I’d rather question the structure early than fix fragile logic later.</p>
+            <p>I translate clients’ unstructured needs into a working solution through interviews and frameworks, adapting as requirements evolve without being repetitive.</p>
+          </div>
+
+  <div class="stat-grid wipe-in" style="transition-delay: .25s">
+          <div class="stat-card">
+          <span class="stat-val">3×</span>
+          <span class="stat-lbl">DEAN'S LISTER</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-val">HIGH</span>
+          <span class="stat-lbl">HONORS · SHS</span>
+        </div>
+        <div class="stat-card">
+          <span class="stat-val">8</span>
+          <span class="stat-lbl">PROJECTS</span>
+        </div>
+      </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="div-line" aria-hidden="true"></div>
+
+    <!-- ─── SKILLS ────────────────────────────────────── -->
+    <section id="skills">
+      <p class="section-label">02 · SKILLS</p>
+<h2 class="section-title fade-up" data-ghost="SKILLS">TECH <span>STACK</span></h2>
+
+      <div class="skill-group fade-up">
+        <p class="skill-group-label">LANGUAGES</p>
+        <div class="skill-chips">
+          <span class="chip">C#</span>
+          <span class="chip">C++</span>
+          <span class="chip">Java</span>
+          <span class="chip">Python</span>
+          <span class="chip">PHP</span>
+          <span class="chip">HTML</span>
+          <span class="chip">CSS</span>
+        </div>
+      </div>
+      <div class="skill-group fade-up" style="transition-delay: .1s">
+        <p class="skill-group-label">DATABASES</p>
+        <div class="skill-chips">
+          <span class="chip">PostgreSQL</span>
+          <span class="chip">SQLite</span>
+          <span class="chip">MySQL</span>
+        </div>
+      </div>
+      <div class="skill-group fade-up" style="transition-delay: .2s">
+        <p class="skill-group-label">TOOLS & FRAMEWORKS</p>
+        <div class="skill-chips">
+          <span class="chip">.NET / WPF</span>
+          <span class="chip">Git</span>
+          <span class="chip">VS Code</span>
+          <span class="chip">Visual Studio</span>
+        </div>
+      </div>
+      <div class="skill-group fade-up" style="transition-delay: .3s">
+        <p class="skill-group-label">ENVIRONMENT</p>
+        <div class="skill-chips">
+          <span class="chip">Windows</span>
+          <span class="chip">Fedora</span>
+          <span class="chip">Debian</span>
+          <span class="chip">Bash / Zsh</span>
+        </div>
+      </div>
+      <div class="skill-group fade-up" style="transition-delay: .4s">
+        <p class="skill-group-label">CURRENTLY LEARNING</p>
+        <div class="skill-chips">
+          <span class="chip learning">Cloud Infrastructure</span>
+          <span class="chip learning">Secure DB Connectivity</span>
+          <span class="chip learning">Machine Learning</span>
+        </div>
+      </div>
+    </section>
+
+    <div class="div-line" aria-hidden="true"></div>
+
+    <!-- ─── PROJECTS ──────────────────────────────────── -->
+    <section id="projects">
+      <p class="section-label">03 · PROJECTS</p>
+      <h2 class="section-title fade-up" data-ghost="PROJECTS">WHAT I'VE <span>BUILT</span></h2>
+
+      <div class="proj-filters fade-up">
+        <button class="proj-filter-btn active" data-filter="all">ALL</button>
+        <button class="proj-filter-btn" data-filter="academic">ACADEMIC</button>
+        <button class="proj-filter-btn" data-filter="personal">PERSONAL</button>
+      </div>
+
+      <div class="projects-grid">
+
+        <!-- ── One Shared Services
+            data-images: add more screenshot filenames here if available ── -->
+        <div class="proj-card personal skew-in"
+            data-category="personal"
+            data-modal
+            data-images='[
+              "assets/images/projects/one-shared-services.png"
+            ]'
+            style="grid-column: span 2;">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/one-shared-services.png" alt="One Shared Services" />
+          <div class="proj-body">
+            <h3 class="proj-name">One Shared Services</h3>
+            <p class="proj-desc">Built for Victory BGC to bring Finance, HR, Facilities, Communications, WeServe, and Purchasing into a single directory. What used to be a manual back-and-forth in chat, shuttle requests, room bookings across multiple buildings, now runs through one system, with detailed statistics and export reports for every department.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">Laravel</span>
+              <span class="proj-tag highlight">Blade</span>
+              <span class="proj-tag highlight">Livewire</span>
+              <span class="proj-tag highlight">SQLite</span>
+              <span class="proj-tag">One system, six departments</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Pillar ── -->
+        <div class="proj-card personal skew-in"
+            data-category="personal"
+            data-modal
+            data-images='[
+              "assets/images/projects/pillar.png"
+            ]'
+            style="transition-delay: .05s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/pillar.png" alt="Pillar" />
+          <div class="proj-body">
+            <h3 class="proj-name">Pillar</h3>
+            <p class="proj-desc">RealLIFE BGC's admin team couldn't be everywhere at once for scholars asking questions daily. Pillar gives them a chatbot and ticketing system organized by category, with visibility into whether similar concerns have already been resolved. When the chatbot can't help, it escalates straight to an admin, so no one is left waiting in silence.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">Laravel</span>
+              <span class="proj-tag highlight">Blade</span>
+              <span class="proj-tag highlight">Livewire</span>
+              <span class="proj-tag">Supports 70+ active scholars</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Animal Bite Treatment Center MS
+            data-images: add your 4 screenshot filenames here ── -->
+        <div class="proj-card personal wip skew-in"
+            data-category="personal"
+            data-modal
+            data-images='[
+              "assets/images/projects/abtcms.png",
+              "assets/images/projects/abtcms-2.png",
+              "assets/images/projects/abtcms-3.png",
+              "assets/images/projects/abtcms-4.png"
+            ]'
+            style="transition-delay: .1s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/abtcms.png" alt="Animal Bite Treatment Center Management System" />
+          <div class="proj-body">
+            <h3 class="proj-name">Animal Bite Treatment Center Management System</h3>
+            <p class="proj-desc">A full-scale desktop management system replacing an error-prone Excel workflow at the Pasig City Hall Animal Bite Treatment Center. Features patient record management, automated dose scheduling, statistics dashboards, and a dual-mode architecture — offline-first with SQLite, and a live sync to a remote PostgreSQL instance hosted on Fedora. Python handles machine learning on the backend. Built for reliability, data integrity, and a workflow that's 100× faster than spreadsheets.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">C# WPF</span>
+              <span class="proj-tag highlight">Python</span>
+              <span class="proj-tag highlight">SQLite</span>
+              <span class="proj-tag highlight">PostgreSQL</span>
+              <span class="proj-tag highlight">.NET</span>
+              <span class="proj-tag">Machine Learning</span>
+              <span class="proj-tag">Offline Mode</span>
+              <span class="proj-tag">Fedora Server</span>
+              <span class="proj-tag">Solo Project</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Shark Feast
+            data-images: add your 2 screenshot filenames here ── -->
+        <div class="proj-card skew-in"
+            data-category="academic"
+            data-modal
+            data-images='[
+              "assets/images/projects/shark-feast.png",
+              "assets/images/projects/shark-feast-2.png"
+            ]'
+            style="transition-delay: .1s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/shark-feast.png" alt="Shark Feast Survival Game" />
+          <div class="proj-body">
+            <h3 class="proj-name">Shark Feast Survival</h3>
+            <p class="proj-desc">An arcade survival game where you control a shark — dodge incoming bombs, catch fish to rack up points. Built in 4 days with a team of 2 developers and 1 graphic designer for a course requirement.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">C++</span>
+              <span class="proj-tag">4-Day Sprint</span>
+              <span class="proj-tag">Team of 3</span>
+              <span class="proj-tag">Academic</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── Dice Game ── -->
+        <div class="proj-card skew-in"
+            data-category="academic"
+            data-modal
+            data-images='[
+              "assets/images/projects/dice-game.png"
+            ]'
+            style="transition-delay: .15s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/dice-game.png" alt="Retro Dice Game" />
+          <div class="proj-body">
+            <h3 class="proj-name">Retro Dice Game</h3>
+            <p class="proj-desc">A retro-styled dice game with a Mario-inspired pixel aesthetic — designed and built in under an hour. A testament to quick execution under time pressure.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">VB.NET</span>
+              <span class="proj-tag">Built in 1 Hour</span>
+              <span class="proj-tag">Retro Aesthetic</span>
+              <span class="proj-tag">Academic</span>
+            </div>
+          </div>
+        </div>
+
+  <div class="proj-card personal skew-in"
+      data-category="personal"
+      data-modal
+      data-link="https://scratch.mit.edu/projects/1285122508"
+      data-images='["assets/images/projects/frog-cloud-catcher.jpg"]'
+      style="transition-delay: .25s">
+  <div class="proj-img-overlay" aria-hidden="true">
+    <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+  </div>
+  <img src="assets/images/projects/frog-cloud-catcher.jpg" alt="Frog Da Cloud Catcher" />
+  <div class="proj-body">
+    <h3 class="proj-name">Frog Da Cloud Catcher</h3>
+    <p class="proj-desc">The first game I ever made with code. A side-scrolling arcade survival game where you control a frog jumping between incoming clouds. Miss a cloud and it's game over. Clouds speed up as your score climbs, and a high score tracker keeps it competitive. Built entirely in Scratch — gravity, jump physics, collision detection, score logic, costume swaps, and an 8-bit soundtrack, all wired together from scratch.</p>
+    <div class="proj-tags">
+      <span class="proj-tag highlight">Scratch</span>
+      <span class="proj-tag">First Ever Project</span>
+      <span class="proj-tag">Game Dev</span>
+      <span class="proj-tag">Physics Simulation</span>
+      <span class="proj-tag">Score Tracking</span>
+      <span class="proj-tag">Personal</span>
+    </div>
+  </div>
+</div>
+
+        <!-- ── Training & Certification Center MS ── -->
+        <div class="proj-card skew-in"
+            data-category="academic"
+            data-modal
+            data-images='[
+              "assets/images/projects/training-center.png"
+            ]'
+            style="transition-delay: .05s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/training-center.png" alt="Training and Certification Center Management System" />
+          <div class="proj-body">
+            <h3 class="proj-name">Training & Certification Center MS</h3>
+            <p class="proj-desc">A desktop management system for a multi-branch training center. Handles course enrollment, branch-specific pricing and discounts, installment payment tracking, trainer assignment (lead, co-trainer, guest), and certification records. Designed with full normalization analysis (UNR → 3NF) and intentional denormalization for performance on overdue payment reports.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">VB.NET</span>
+              <span class="proj-tag highlight">MySQL</span>
+              <span class="proj-tag">XAMPP</span>
+              <span class="proj-tag">Database Design</span>
+              <span class="proj-tag">Academic</span>
+            </div>
+          </div>
+        </div>
+
+
+        <!-- ── Sales System ── -->
+        <div class="proj-card skew-in"
+            data-category="academic"
+            data-modal
+            data-images='[
+              "assets/images/projects/sales-system.png"
+            ]'
+            style="transition-delay: .2s">
+          <div class="proj-img-overlay" aria-hidden="true">
+            <span class="proj-img-overlay-text">[ VIEW PROJECT ]</span>
+          </div>
+          <img src="assets/images/projects/sales-system.png" alt="Sales System" />
+          <div class="proj-body">
+            <h3 class="proj-name">Sales System</h3>
+            <p class="proj-desc">An academic sales management system featuring core business logic — transaction handling, inventory tracking, and reporting. Built to demonstrate proficiency in database-driven application development.</p>
+            <div class="proj-tags">
+              <span class="proj-tag highlight">VB.NET</span>
+              <span class="proj-tag highlight">MySQL</span>
+              <span class="proj-tag">XAMPP</span>
+              <span class="proj-tag">Academic</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <div class="div-line" aria-hidden="true"></div>
+
+    <!-- ─── CONTACT ───────────────────────────────────── -->
+    <section id="contact">
+      <p class="section-label">04 · CONTACT</p>
+<h2 class="section-title fade-up" data-ghost="CONTACT">GET IN <span>TOUCH</span></h2>
+
+      <div class="contact-wrap">
+<div class="blur-in">
+  <p class="contact-text">
+            Open to partnerships or internships. Reach out anytime.
+          </p>
+<div class="contact-links">
+  <a href="mailto:jjbassig30@gmail.com" class="contact-link">
+    <div>
+      <span class="contact-link-label">EMAIL</span>
+      <span class="contact-link-val">jjbassig30@gmail.com</span>
+    </div>
+  </a>
+  <a href="assets/resume.pdf" target="_blank" rel="noopener" class="contact-link">
+    <div>
+      <span class="contact-link-label">RESUME</span>
+      <span class="contact-link-val">View / Download PDF</span>
+    </div>
+  </a>
+  <a href="tel:+639947668735" class="contact-link">
+    <div>
+      <span class="contact-link-label">PHONE</span>
+      <span class="contact-link-val">+63 994 766 8735</span>
+    </div>
+  </a>
+  <div class="contact-link">
+    <div>
+      <span class="contact-link-label">LOCATION</span>
+      <span class="contact-link-val">Pasig, Philippines</span>
+    </div>
+  </div>
+</div>
+          </div>
+
+        <div class="fade-up" style="transition-delay: .12s">
+          <p class="section-label" style="margin-bottom: 1rem;">FIND ME ONLINE</p>
+          <div class="social-grid">
+            <a href="https://github.com/JjByteX" target="_blank" rel="noopener noreferrer" class="social-item">
+              <span class="social-platform">GH</span> github.com/JjByteX
+            </a>
+            <a href="https://linkedin.com/in/jjbassig" target="_blank" rel="noopener noreferrer" class="social-item">
+              <span class="social-platform">LI</span> in/jjbassig
+            </a>
+            <a href="https://web.facebook.com/jjbassig/" target="_blank" rel="noopener noreferrer" class="social-item">
+              <span class="social-platform">FB</span> fb/jjbassig
+            </a>
+            <a href="https://twitter.com/littlealcho" target="_blank" rel="noopener noreferrer" class="social-item">
+              <span class="social-platform">X</span> @littlealcho
+            </a>
+          </div>
+
+      <div class="github-widget fade-up" style="margin-top: 1.5rem;">
+              <div class="github-widget-header">
+              <div>
+                <p class="section-label" style="margin-bottom: 0.25rem;">GITHUB ACTIVITY</p>
+                <p class="github-widget-sub">@JjByteX · last 4 months</p>
+              </div>
+              <div class="github-clock">
+                <span class="clock-label">LOCAL TIME</span>
+                <span class="clock-time" id="liveClock">--:--:-- --</span>
+                <span class="clock-tz">UTC+8</span>
+              </div>
+            </div>
+<div class="github-graph-wrap" id="ghChartWrap" style="cursor:pointer; position:relative;" title="Click to expand">
+  <div class="proj-img-overlay" aria-hidden="true">
+    <span class="proj-img-overlay-text">[ VIEW ]</span>
+  </div>
+  <div id="ghChart" style="width:100%; line-height:0;"></div>
+</div>
+
+          </div>
+        </div>
+      </div>
+    </section>
+
+<!-- ─── GITHUB CHART MODAL ───────────────────────── -->
+    <div id="ghModal" class="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="GitHub activity fullscreen">
+      <div class="proj-modal-wrapper" style="max-width: 980px;">
+        <span class="modal-corner modal-corner-tl" aria-hidden="true"></span>
+        <span class="modal-corner modal-corner-tr" aria-hidden="true"></span>
+        <span class="modal-corner modal-corner-bl" aria-hidden="true"></span>
+        <span class="modal-corner modal-corner-br" aria-hidden="true"></span>
+        <div class="proj-modal-panel">
+          <div class="proj-modal-scan" aria-hidden="true"></div>
+          <div class="proj-modal-title-band">
+            <div class="proj-modal-title-left">
+              <h3 class="proj-modal-title">GITHUB ACTIVITY</h3>
+              <div class="proj-modal-badges">
+                <span class="proj-tag highlight">@JjByteX</span>
+                <span class="proj-tag">last 12 months</span>
+              </div>
+            </div>
+            <button class="proj-modal-close" id="ghModalClose" aria-label="Close modal">
+              <i data-lucide="x"></i>
+            </button>
+          </div>
+          <div style="padding: 1.5rem; background: var(--bg);">
+            <div id="ghChartLarge"></div>
+          </div>
+          <div class="proj-modal-footer"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── FOOTER ────────────────────────────────────── -->
+<footer class="site-footer">
+  <div class="footer-ghost">BASSIG</div>
+  <div class="footer-inner">
+    <div class="footer-divider"></div>
+    <div class="footer-bottom">
+      <p class="footer-copy">© 2026 · JJ BASSIG · Designed &amp; built from scratch</p>
+      <p class="footer-quote">"Not inactive. Most of the time, I commit locally."</p>
+    </div>
+  </div>
+</footer>
+
+    <!-- ─── BACK TO TOP ──────────────────────────────────── -->
+    <a href="#hero" class="back-to-top" id="backToTop" aria-label="Back to top">
+      <i data-lucide="arrow-up" class="btt-icon"></i>
+    </a>
+
+  <!-- ═══════════════════════════════════════════════════
+        PROJECT MODAL — replace this entire block in index.html
+    ════════════════════════════════════════════════════ -->
+  <!-- REPLACE the entire #projModal block with this -->
+  <div id="projModal" class="proj-modal-overlay" role="dialog" aria-modal="true" aria-label="Project details">
+
+    <!-- Wrapper holds corners + is NOT scrollable — corners always visible -->
+    <div class="proj-modal-wrapper">
+
+      <!-- HUD corners live on the wrapper, outside the scrolling panel -->
+      <span class="modal-corner modal-corner-tl" aria-hidden="true"></span>
+      <span class="modal-corner modal-corner-tr" aria-hidden="true"></span>
+      <span class="modal-corner modal-corner-bl" aria-hidden="true"></span>
+      <span class="modal-corner modal-corner-br" aria-hidden="true"></span>
+
+      <div id="projModalPanel" class="proj-modal-panel">
+
+        <!-- Scanline sweep -->
+        <div class="proj-modal-scan" id="mScan" aria-hidden="true"></div>
+
+  <!-- Title band — close only on the right now -->
+  <div class="proj-modal-title-band">
+    <div class="proj-modal-title-left">
+      <h3 class="proj-modal-title" id="mTitle"></h3>
+      <div class="proj-modal-badges" id="mBadges"></div>
+    </div>
+    <button class="proj-modal-close" id="projModalClose" aria-label="Close modal">
+      <i data-lucide="x"></i>
+    </button>
+  </div>
+
+  <!-- Carousel — dots now live here, centered at bottom of image -->
+  <div class="proj-modal-carousel" id="mCarousel">
+    <button class="modal-nav modal-nav-prev" id="mPrev" aria-label="Previous image">
+      <i data-lucide="chevron-left"></i>
+    </button>
+    <button class="modal-nav modal-nav-next" id="mNext" aria-label="Next image">
+      <i data-lucide="chevron-right"></i>
+    </button>
+    <div class="modal-slides" id="mSlides"></div>
+    <div class="modal-dots" id="mDots"></div>
+  </div>
+
+        <!-- Info — two column layout -->
+<div class="proj-modal-info">
+  <div class="proj-modal-info-grid">
+    <div class="proj-modal-info-left">
+      <span class="proj-modal-section-label">OVERVIEW</span>
+      <p class="proj-modal-desc" id="mDesc"></p>
+    </div>
+    <div class="proj-modal-info-right">
+      <span class="proj-modal-section-label">TECH STACK</span>
+      <div class="proj-modal-tags" id="mTags"></div>
+      <!-- Play button sits under tech stack tags -->
+      <div id="mPlayWrap" style="display:none; margin-top: 1rem;"></div>
+    </div>
+  </div>
+</div>
+
+        <!-- Footer accent -->
+        <div class="proj-modal-footer"></div>
+
+      </div>
+    </div>
+  </div>
+
+    <!-- ─── SCRIPTS ───────────────────────────────────── -->
+    <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+    <script src="js/vanta.js" defer></script>
+    <script src="js/theme.js" defer></script>
+    <script src="js/scroll.js" defer></script>
+    <script src="js/glitch.js" defer></script>
+    <script src="js/switcher.js" defer></script>
+    <script src="js/contributions.js" defer></script>
+    <script src="js/modal.js" defer></script>
+    <script src="js/main.js" defer></script>
+  <script src="js/effects.js" defer></script>
+  <script src="js/intro.js"></script>
+  </body>
+  </html>

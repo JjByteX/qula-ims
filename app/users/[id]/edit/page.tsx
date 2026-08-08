@@ -28,6 +28,12 @@ export default async function EditProfilePage({ params }: { params: Promise<{ id
       contactNumber: users.contactNumber,
       description: users.description,
       profilePictureUrl: users.profilePictureUrl,
+      paymentQrCodeUrl: users.paymentQrCodeUrl,
+      paymentMethod: users.paymentMethod,
+      paymentAccountName: users.paymentAccountName,
+      paymentBank: users.paymentBank,
+      paymentAccountNumber: users.paymentAccountNumber,
+      paymentSignatureUrl: users.paymentSignatureUrl,
     })
     .from(users)
     .where(eq(users.id, id))

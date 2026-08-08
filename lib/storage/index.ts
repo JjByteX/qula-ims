@@ -3,7 +3,8 @@ export {
   StorageValidationError,
   uploadProfilePicture,
   uploadProjectDocument,
-  uploadInvoiceQrCode,
+  uploadPaymentQrCode,
+  uploadPaymentSignature,
   deleteFile,
   getPublicUrl,
 } from "./upload";

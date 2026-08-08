@@ -35,6 +35,16 @@ type SeedUser = {
   lastName: string;
   email: string;
   role: "superadmin" | "user";
+  // Payment profile (docs/phases-plan-revision-1.md Phase 12). Method/
+  // Account Name/Bank are the same for both seeded users (shared
+  // InstaPay/MariBank details), so seeding them here means a fresh dev
+  // DB doesn't need each field retyped by hand in Settings before a
+  // designated payer can be picked. Account number and QR code are
+  // deliberately left unset — those are uploaded by hand per person,
+  // not shared/guessable values a seed script should invent.
+  paymentMethod: string;
+  paymentAccountName: string;
+  paymentBank: string;
 };
 
 const SEED_USERS: SeedUser[] = [
@@ -44,6 +54,9 @@ const SEED_USERS: SeedUser[] = [
     lastName: "Bassig",
     email: "jj.bassig@qula.dev",
     role: "superadmin",
+    paymentMethod: "InstaPay",
+    paymentAccountName: "Jj Bassig",
+    paymentBank: "MariBank",
   },
   {
     firstName: "Rasty",
@@ -51,6 +64,9 @@ const SEED_USERS: SeedUser[] = [
     lastName: "Espartero",
     email: "rasty.espartero@qula.dev",
     role: "user",
+    paymentMethod: "InstaPay",
+    paymentAccountName: "Rasty Espartero",
+    paymentBank: "MariBank",
   },
 ];
 
@@ -75,6 +91,9 @@ async function seedUsers() {
           role: seedUser.role,
           status: "active",
           passwordHash,
+          paymentMethod: seedUser.paymentMethod,
+          paymentAccountName: seedUser.paymentAccountName,
+          paymentBank: seedUser.paymentBank,
           updatedAt: new Date(),
         })
         .where(eq(schema.users.id, existing.id));
@@ -87,6 +106,9 @@ async function seedUsers() {
         passwordHash,
         role: seedUser.role,
         status: "active",
+        paymentMethod: seedUser.paymentMethod,
+        paymentAccountName: seedUser.paymentAccountName,
+        paymentBank: seedUser.paymentBank,
       });
     }
 
@@ -225,7 +247,19 @@ async function seedFnbProject() {
   if (!project) {
     [project] = await db
       .insert(schema.projects)
-      .values({ title: FNB_PROJECT_TITLE, createdByUserId })
+      .values({
+        title: FNB_PROJECT_TITLE,
+        createdByUserId,
+        // Billing default (phases-plan-revision-1.md Phase 8) — same
+        // value every seeded document below used to repeat by hand, now
+        // set once on the project so new documents pick it up
+        // automatically instead of being retyped. Payment fields
+        // (method/account/bank/number) no longer live on the project
+        // (docs/phases-plan-revision-2.md Phase 14) — that info comes
+        // from the designated payer's user profile instead.
+        billedToName: "Liquor Inventory Solution",
+        billedToAttention: "Lourd Borromeo",
+      })
       .returning();
   }
 
@@ -309,8 +343,7 @@ async function seedFnbProject() {
         paymentAccountName: "Rasty Espartero",
         paymentBank: "MariBank",
         paymentAccountNumber: "09171234567",
-        paymentReferenceNote: `${FNB_PROJECT_TITLE} - ${pair.milestoneTitle}`,
-        issuedBy: "Ejay Gonzales Eduardo II, Jj Sanchez Bassig, Rasty Cannu Espartero, Project Lead",
+        issuedBy: "JJ Bassig, Rasty Espartero",
         isPaid: true,
         createdByUserId,
       });

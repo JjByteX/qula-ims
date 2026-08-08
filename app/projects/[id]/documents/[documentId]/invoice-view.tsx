@@ -7,6 +7,17 @@ export function InvoiceView({ document }: { document: ProjectDocument }) {
     <div className={styles.page}>
       <h1 className={styles.title}>INVOICE</h1>
 
+      {/* Billed To / Attention (docs/phases-plan-revision-2.md Phase 13)
+          sits directly under the document title now, ahead of the
+          invoice's own meta block — the client being billed is the
+          first thing on the page, like a letterhead's "To:" line, not a
+          row inside the payment table below. */}
+      <div className={styles.billedToBlock}>
+        <div className={styles.metaLabel}>Billed To</div>
+        <div>{document.billedToName}</div>
+        {document.billedToAttention && <div>Attention: {document.billedToAttention}</div>}
+      </div>
+
       <div className={styles.metaBlock}>
         <div>
           <span className={styles.metaLabel}>Invoice No.: </span>
@@ -28,18 +39,6 @@ export function InvoiceView({ document }: { document: ProjectDocument }) {
 
       <table className={styles.table}>
         <tbody>
-          <tr>
-            <td>Billed To</td>
-            <td>
-              {document.billedToName}
-              {document.billedToAttention && (
-                <>
-                  <br />
-                  Attention: {document.billedToAttention}
-                </>
-              )}
-            </td>
-          </tr>
           <tr>
             <td>Project</td>
             <td>{document.title}</td>
@@ -85,10 +84,6 @@ export function InvoiceView({ document }: { document: ProjectDocument }) {
             <td>{document.paymentAccountNumber}</td>
           </tr>
           <tr>
-            <td>Reference/Note to include</td>
-            <td>{document.paymentReferenceNote}</td>
-          </tr>
-          <tr>
             <td>QR Code</td>
             <td>
               <div className={styles.qrBox}>
@@ -114,6 +109,22 @@ export function InvoiceView({ document }: { document: ProjectDocument }) {
         <br />
         {document.issuedBy}
       </p>
+
+      {/* Signature (docs/phases-plan-revision-1.md Phase 12.4) — the
+          designated payer's signature image at the time this invoice
+          was created, snapshotted onto document.signatureUrl so a later
+          payer change or profile edit can't alter a document that
+          already went out. No fallback text when absent (unlike the QR
+          box above): an invoice created before any payer had a
+          signature on file, or before Phase 12 existed at all, simply
+          has no signature line rather than a placeholder that implies
+          one should be there. */}
+      {document.signatureUrl && (
+        <div className={styles.qrBox}>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={document.signatureUrl} alt="Signature" className={styles.qrImage} />
+        </div>
+      )}
 
       <p className={styles.footerText}>
         Thank you for your trust and confidence. This invoice is a request for payment and is

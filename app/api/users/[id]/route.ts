@@ -4,7 +4,14 @@ import { db } from "@/db/client";
 import { users } from "@/db/schema";
 import { profileUpdateSchema } from "@/lib/validation/auth";
 import { authorizeUser } from "@/lib/auth/authorize";
-import { uploadProfilePicture, deleteFile, getPublicUrl, StorageValidationError } from "@/lib/storage";
+import {
+  uploadProfilePicture,
+  uploadPaymentQrCode,
+  uploadPaymentSignature,
+  deleteFile,
+  getPublicUrl,
+  StorageValidationError,
+} from "@/lib/storage";
 import { logActivity } from "@/lib/activity/log";
 
 // Profile view (phases-plan 1.7 / Client-Requests.md "Anyone can view any
@@ -28,6 +35,12 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       contactNumber: users.contactNumber,
       description: users.description,
       profilePictureUrl: users.profilePictureUrl,
+      paymentQrCodeUrl: users.paymentQrCodeUrl,
+      paymentMethod: users.paymentMethod,
+      paymentAccountName: users.paymentAccountName,
+      paymentBank: users.paymentBank,
+      paymentAccountNumber: users.paymentAccountNumber,
+      paymentSignatureUrl: users.paymentSignatureUrl,
       role: users.role,
       status: users.status,
       createdAt: users.createdAt,
@@ -76,6 +89,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     suffix: formData.get("suffix") || undefined,
     contactNumber: formData.get("contactNumber") || undefined,
     description: formData.get("description") || undefined,
+    paymentMethod: formData.get("paymentMethod") || undefined,
+    paymentAccountName: formData.get("paymentAccountName") || undefined,
+    paymentBank: formData.get("paymentBank") || undefined,
+    paymentAccountNumber: formData.get("paymentAccountNumber") || undefined,
   });
   if (!parsed.success) {
     const message = parsed.error.issues[0]?.message ?? "Invalid request.";
@@ -106,9 +123,55 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     }
   }
 
+  // Payment QR code and signature (docs/phases-plan-revision-1.md Phase
+  // 12.2) — same pick-file-then-preview, replace-then-cleanup-old
+  // pattern as the profile picture just above, just a different pair of
+  // fields and storage functions.
+  let paymentQrCodeUrl = target.paymentQrCodeUrl;
+  const paymentQrCode = formData.get("paymentQrCode");
+  if (paymentQrCode instanceof File && paymentQrCode.size > 0) {
+    try {
+      const { url } = await uploadPaymentQrCode({ userId: id, file: paymentQrCode });
+      paymentQrCodeUrl = url;
+    } catch (error) {
+      if (error instanceof StorageValidationError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
+    if (target.paymentQrCodeUrl) {
+      const oldKey = target.paymentQrCodeUrl.replace(`${getPublicUrl("")}`, "");
+      await deleteFile(oldKey).catch(() => {});
+    }
+  }
+
+  let paymentSignatureUrl = target.paymentSignatureUrl;
+  const paymentSignature = formData.get("paymentSignature");
+  if (paymentSignature instanceof File && paymentSignature.size > 0) {
+    try {
+      const { url } = await uploadPaymentSignature({ userId: id, file: paymentSignature });
+      paymentSignatureUrl = url;
+    } catch (error) {
+      if (error instanceof StorageValidationError) {
+        return NextResponse.json({ error: error.message }, { status: 400 });
+      }
+      throw error;
+    }
+    if (target.paymentSignatureUrl) {
+      const oldKey = target.paymentSignatureUrl.replace(`${getPublicUrl("")}`, "");
+      await deleteFile(oldKey).catch(() => {});
+    }
+  }
+
   const [updated] = await db
     .update(users)
-    .set({ ...parsed.data, profilePictureUrl, updatedAt: new Date() })
+    .set({
+      ...parsed.data,
+      profilePictureUrl,
+      paymentQrCodeUrl,
+      paymentSignatureUrl,
+      updatedAt: new Date(),
+    })
     .where(eq(users.id, id))
     .returning({
       id: users.id,
@@ -120,6 +183,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       contactNumber: users.contactNumber,
       description: users.description,
       profilePictureUrl: users.profilePictureUrl,
+      paymentQrCodeUrl: users.paymentQrCodeUrl,
+      paymentMethod: users.paymentMethod,
+      paymentAccountName: users.paymentAccountName,
+      paymentBank: users.paymentBank,
+      paymentAccountNumber: users.paymentAccountNumber,
+      paymentSignatureUrl: users.paymentSignatureUrl,
       role: users.role,
       status: users.status,
     });

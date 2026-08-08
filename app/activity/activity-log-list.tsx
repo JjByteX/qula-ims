@@ -55,6 +55,7 @@ const ACTIONS = [
   "ar.created",
   "ar.edited",
   "settings.notification_days_updated",
+  "settings.designated_payer_updated",
 ] as const;
 
 type Filters = { actor: string; action: string; from: string; to: string };

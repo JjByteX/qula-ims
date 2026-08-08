@@ -80,37 +80,70 @@ export async function uploadProjectDocument(params: {
   return { key, url: getPublicUrl(key) };
 }
 
-// --- Invoice QR code image ----------------------------------------------
-// The QR code on a generated invoice is a person's own upload (e.g. an
-// InstaPay QR screenshot), not something the app generates — same 2MB
-// image-upload shape as profile pictures, just a different storage
-// prefix and no association with a user.
+// --- User payment profile: QR code + signature ---------------------------
+// A user's own payment QR code and signature image (docs/phases-plan-
+// revision-1.md Phase 12.2), used once they become the designated payer.
+// This is now the only place a QR code image is ever uploaded — the old
+// per-invoice QR upload (uploadInvoiceQrCode) was removed in
+// docs/phases-plan-revision-2.md Phase 15: a new invoice's QR code is
+// snapshotted automatically from here instead
+// (app/api/projects/[id]/documents/route.ts), the same way the signature
+// already was.
 
-const MAX_QR_CODE_BYTES = 2 * 1024 * 1024;
+const MAX_PAYMENT_QR_CODE_BYTES = 2 * 1024 * 1024;
 
-const QR_CODE_TYPES: Record<string, string> = {
+const PAYMENT_QR_CODE_TYPES: Record<string, string> = {
   "image/jpeg": "jpg",
   "image/png": "png",
   "image/webp": "webp",
 };
 
-export async function uploadInvoiceQrCode(params: {
-  documentId: string;
+export async function uploadPaymentQrCode(params: {
+  userId: string;
   file: File;
 }): Promise<UploadResult> {
-  const { documentId, file } = params;
+  const { userId, file } = params;
 
-  const extension = QR_CODE_TYPES[file.type];
+  const extension = PAYMENT_QR_CODE_TYPES[file.type];
   if (!extension) {
     throw new StorageValidationError(
       `Unsupported image type "${file.type}". Allowed: JPEG, PNG, WebP.`,
     );
   }
-  if (file.size > MAX_QR_CODE_BYTES) {
+  if (file.size > MAX_PAYMENT_QR_CODE_BYTES) {
     throw new StorageValidationError("QR code image exceeds the 2MB limit.");
   }
 
-  const key = `project-documents/${documentId}/qr-code/${randomUUID()}.${extension}`;
+  const key = `users/${userId}/payment-qr-code/${randomUUID()}.${extension}`;
+  await putObject(key, Buffer.from(await file.arrayBuffer()), file.type);
+  return { key, url: getPublicUrl(key) };
+}
+
+const MAX_PAYMENT_SIGNATURE_BYTES = 2 * 1024 * 1024;
+
+const PAYMENT_SIGNATURE_TYPES: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+export async function uploadPaymentSignature(params: {
+  userId: string;
+  file: File;
+}): Promise<UploadResult> {
+  const { userId, file } = params;
+
+  const extension = PAYMENT_SIGNATURE_TYPES[file.type];
+  if (!extension) {
+    throw new StorageValidationError(
+      `Unsupported image type "${file.type}". Allowed: JPEG, PNG, WebP.`,
+    );
+  }
+  if (file.size > MAX_PAYMENT_SIGNATURE_BYTES) {
+    throw new StorageValidationError("Signature image exceeds the 2MB limit.");
+  }
+
+  const key = `users/${userId}/payment-signature/${randomUUID()}.${extension}`;
   await putObject(key, Buffer.from(await file.arrayBuffer()), file.type);
   return { key, url: getPublicUrl(key) };
 }

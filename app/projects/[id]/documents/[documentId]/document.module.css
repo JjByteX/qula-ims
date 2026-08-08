@@ -27,6 +27,21 @@
   margin-bottom: 24px;
 }
 
+/* Billed To / Received From (+ Attention), directly under the document
+   title (docs/phases-plan-revision-2.md Phase 13) — left-aligned,
+   opposite metaBlock's right alignment, so the two sit like a letterhead
+   "To:" line next to the document's own number/date block. Reuses
+   .metaLabel for the "Billed To"/"Received From" heading so the two
+   blocks read as one visual family. */
+.billedToBlock {
+  text-align: left;
+  margin-bottom: 20px;
+}
+
+.billedToBlock div {
+  margin-bottom: 2px;
+}
+
 .metaBlock {
   text-align: right;
   margin-bottom: 24px;

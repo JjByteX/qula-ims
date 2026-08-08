@@ -38,7 +38,6 @@ function toDefaultValues(document: ProjectDocument) {
     paymentAccountName: document.paymentAccountName ?? "",
     paymentBank: document.paymentBank ?? "",
     paymentAccountNumber: document.paymentAccountNumber ?? "",
-    paymentReferenceNote: document.paymentReferenceNote ?? "",
     issuedBy: document.issuedBy ?? "",
     // receivedFromName/receivedByName/etc are AR-only; DocumentForm's
     // shared type just wants the keys present so RHF doesn't warn about

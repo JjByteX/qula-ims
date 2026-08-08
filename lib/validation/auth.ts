@@ -44,6 +44,14 @@ export type RegisterInput = z.infer<typeof registerSchema>;
 // job (lib/auth/reset-token.ts), and email changes aren't in
 // Client-Requests.md's edit scope, only its create-account field list, so
 // this only covers what the profile page actually lets you change.
+//
+// Payment profile fields (docs/phases-plan-revision-1.md Phase 12.2) are
+// all optional, same as the rest of this schema — an incomplete payment
+// profile isn't a validation error, just a profile nothing reads from
+// yet (or that stops being read from, if this user is later un-
+// designated as payer). paymentQrCodeUrl/paymentSignatureUrl aren't
+// here — those are uploaded files, handled the same way
+// profilePictureUrl already is, outside this JSON-shaped schema.
 export const profileUpdateSchema = z.object({
   firstName: z.string().trim().min(1, "First name is required"),
   middleName: z.string().trim().optional(),
@@ -51,6 +59,10 @@ export const profileUpdateSchema = z.object({
   suffix: z.string().trim().optional(),
   contactNumber: z.string().trim().optional(),
   description: z.string().trim().optional(),
+  paymentMethod: z.string().trim().optional(),
+  paymentAccountName: z.string().trim().optional(),
+  paymentBank: z.string().trim().optional(),
+  paymentAccountNumber: z.string().trim().optional(),
 });
 
 export type ProfileUpdateInput = z.infer<typeof profileUpdateSchema>;

@@ -15,7 +15,11 @@ const dateString = z
 // Acknowledgement Receipt (phases-plan 3.2). Mirrors the client's real AR
 // template field for field: received from (company + contact), project,
 // amount received (+ words), payment purpose, remaining balance, and the
-// two signature-block names.
+// two signature-block names. receivedBySignatureUrl (Phase 16) isn't part
+// of this text-field schema — same reasoning as invoice's signatureUrl/
+// qrCodeUrl below: it's a snapshotted image URL set by auto-fill/refresh
+// (app/api/projects/[id]/documents/route.ts and .../refresh/route.ts),
+// not a value someone types into the create/edit form.
 export const arDocumentSchema = z.object({
   documentNumber: z.string().trim().min(1, "Receipt number is required"),
   documentDate: dateString,
@@ -34,8 +38,9 @@ export type ArDocumentInput = z.infer<typeof arDocumentSchema>;
 // Invoice (phases-plan 3.2). Mirrors the client's real invoice template:
 // billed-to, due date, amount due (+ words), payment purpose, the
 // agreement/total-cost reference line, and the InstaPay payment block.
-// qrCodeUrl is uploaded separately (see app/api/project-documents/[id]/qr-code/route.ts)
-// and isn't part of this text-field schema.
+// signatureUrl/qrCodeUrl are snapshotted image URLs set by auto-fill/
+// refresh (app/api/projects/[id]/documents/route.ts and
+// .../refresh/route.ts), not part of this text-field schema.
 export const invoiceDocumentSchema = z.object({
   documentNumber: z.string().trim().min(1, "Invoice number is required"),
   documentDate: dateString,
@@ -51,7 +56,6 @@ export const invoiceDocumentSchema = z.object({
   paymentAccountName: z.string().trim().min(1, "Account name is required"),
   paymentBank: z.string().trim().min(1, "Bank is required"),
   paymentAccountNumber: z.string().trim().min(1, "Account number is required"),
-  paymentReferenceNote: z.string().trim().min(1, "Reference note is required"),
   issuedBy: z.string().trim().min(1, "Issued by is required"),
 });
 

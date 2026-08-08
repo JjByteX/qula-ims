@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { Pencil } from "lucide-react";
+import { eq } from "drizzle-orm";
 import { requireUser } from "@/lib/auth/session";
+import { db } from "@/db/client";
+import { users } from "@/db/schema";
 import { getOrCreateAppSettings } from "@/lib/settings/get";
 import { Card, CardContent } from "@/components/ui/card";
 import { NotificationSettingsForm } from "./notification-settings-form";
+import { DesignatedPayerCard } from "./designated-payer-card";
 
 // Settings (phases-plan 6). Open to any signed-in user — Client-Requests.md
 // lists both items (notification lead time, profile edit) with no
@@ -11,6 +15,34 @@ import { NotificationSettingsForm } from "./notification-settings-form";
 export default async function SettingsPage() {
   const user = await requireUser();
   const settings = await getOrCreateAppSettings();
+
+  // Active users with their payment-profile completeness (docs/phases-
+  // plan-revision-1.md Phase 12.3's "Who receives payment" card).
+  // Queried directly here rather than through
+  // lib/budget/compute.ts's getActiveUsers() — that helper is shared
+  // with the budget splitter and only needs id/name, so it isn't worth
+  // widening its select just for this one card's payment-completeness
+  // check.
+  const activeUsers = await db
+    .select({
+      id: users.id,
+      firstName: users.firstName,
+      lastName: users.lastName,
+      paymentMethod: users.paymentMethod,
+      paymentAccountName: users.paymentAccountName,
+      paymentBank: users.paymentBank,
+      paymentAccountNumber: users.paymentAccountNumber,
+    })
+    .from(users)
+    .where(eq(users.status, "active"));
+
+  const payerOptions = activeUsers.map((u) => ({
+    id: u.id,
+    name: `${u.firstName} ${u.lastName}`,
+    profileComplete: Boolean(
+      u.paymentMethod && u.paymentAccountName && u.paymentBank && u.paymentAccountNumber,
+    ),
+  }));
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
@@ -25,6 +57,11 @@ export default async function SettingsPage() {
         </div>
 
         <NotificationSettingsForm initialDaysBefore={settings.notificationDaysBefore} />
+
+        <DesignatedPayerCard
+          users={payerOptions}
+          initialDesignatedPayerUserId={settings.designatedPayerUserId}
+        />
 
         {/* Profile edit shortcut (phases-plan 6.2). Links straight to
             this user's own edit form — /users/[id]/edit already enforces

@@ -22,6 +22,8 @@ type Project = {
   title: string;
   price: string;
   status: "active" | "archived";
+  billedToName?: string | null;
+  billedToAttention?: string | null;
 };
 
 // Create form: title + its first milestone (title, price) in one step —
@@ -49,7 +51,12 @@ function CreateProjectForm({
   } = useForm<CreateProjectInput>({
     resolver: zodResolver(createProjectSchema),
     mode: "onChange",
-    defaultValues: { title: "", milestone: { title: "", price: "" } },
+    defaultValues: {
+      title: "",
+      milestone: { title: "", price: "" },
+      billedToName: "",
+      billedToAttention: "",
+    },
   });
 
   async function submit(data: CreateProjectInput) {
@@ -69,6 +76,36 @@ function CreateProjectForm({
         {errors.title && (
           <p className="text-[var(--text-sm)] text-[var(--destructive)]">{errors.title.message}</p>
         )}
+      </div>
+
+      {/* Billed To / Attention (docs/phases-plan-revision-2.md Phase 13)
+          sit right under the project title — every project has a
+          client, so Billed To is required, on the same visual tier as
+          the title. This also matches where the value shows up on the
+          generated invoice/AR itself: under the document title. Attention
+          stays optional — a specific contact person isn't always known
+          yet. Payment info (method/account/bank/number) isn't asked for
+          here at all — that's the designated payer's own profile,
+          selected once in Settings (docs/phases-plan-revision-2.md
+          Phase 14), not a per-project field. */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="billedToName">Billed To (company)</Label>
+          <Input
+            id="billedToName"
+            aria-invalid={!!errors.billedToName}
+            {...register("billedToName")}
+          />
+          {errors.billedToName && (
+            <p className="text-[var(--text-sm)] text-[var(--destructive)]">
+              {errors.billedToName.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="billedToAttention">Attention (contact person)</Label>
+          <Input id="billedToAttention" {...register("billedToAttention")} />
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -161,6 +198,31 @@ function EditProjectForm({
         {errors.title && (
           <p className="text-[var(--text-sm)] text-[var(--destructive)]">{errors.title.message}</p>
         )}
+      </div>
+
+      {/* Billed To / Attention (docs/phases-plan-revision-2.md Phase 13)
+          — under the project title. Billed To is required, same tier as
+          the title. Attention stays optional. Payment info isn't edited
+          here — that's the designated payer's own profile in Settings
+          (Phase 14). */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="edit-billedToName">Billed To (company)</Label>
+          <Input
+            id="edit-billedToName"
+            aria-invalid={!!errors.billedToName}
+            {...register("billedToName")}
+          />
+          {errors.billedToName && (
+            <p className="text-[var(--text-sm)] text-[var(--destructive)]">
+              {errors.billedToName.message}
+            </p>
+          )}
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="edit-billedToAttention">Attention (contact person)</Label>
+          <Input id="edit-billedToAttention" {...register("billedToAttention")} />
+        </div>
       </div>
 
       {serverError && (
@@ -317,7 +379,11 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
               editingId === project.id ? (
                 <div key={project.id} className="py-4 first:pt-0 last:pb-0">
                   <EditProjectForm
-                    defaultValues={{ title: project.title }}
+                    defaultValues={{
+                      title: project.title,
+                      billedToName: project.billedToName ?? "",
+                      billedToAttention: project.billedToAttention ?? "",
+                    }}
                     onSubmit={(data) => handleUpdate(project.id, data)}
                     onCancel={() => setEditingId(null)}
                   />

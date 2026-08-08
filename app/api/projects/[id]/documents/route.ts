@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { and, desc, eq } from "drizzle-orm";
+import { and, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { milestones, projectDocuments, projects } from "@/db/schema";
 import {
@@ -9,6 +9,8 @@ import {
 } from "@/lib/validation/documents";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
+import { amountToWords } from "@/lib/documents/amount-to-words";
+import { getDesignatedPayer, getInvoicePayerFields, getArPayerFields } from "@/lib/documents/payer-fields";
 
 // Documents live on the project page (phases-plan 3.2), open to any
 // signed-in user — same rule as the project itself.
@@ -34,8 +36,15 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
 // wins.
 //
 // The milestone's 3-dot menu creates the document immediately with just
-// { type, milestoneId } — the rest of the fields (invoice/AR number,
-// amounts, etc.) are blank at creation and filled in later on the
+// { type, milestoneId } — amount, amount in words, payment purpose, and
+// (for invoices) the dates and payment/billed-to block are all derived
+// server-side from the milestone and project below
+// (phases-plan-revision-1.md Phase 9), rather than left blank, since the
+// milestone and project already carry everything needed. Anything the
+// request does send for these fields is used as-is instead of the
+// derived value — same override-wins rule as title/milestone/price.
+// Whatever's still missing after that (e.g. document number, or invoice
+// fields when no project defaults are set) is filled in later on the
 // document's own page (PATCH .../documents/[documentId], which does
 // enforce the full arDocumentSchema/invoiceDocumentSchema before saving).
 // So only the prefill fields are validated here; any generated-document
@@ -98,6 +107,58 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  // Full auto-fill from the milestone/project (phases-plan-revision-1.md
+  // Phase 9). fieldsParsed.data only has keys the request actually sent
+  // (schema.partial()), so anything the milestone/project already knows
+  // and the request left out is derived here instead of staying blank.
+  // Spread order below (autoFilled first, then fieldsParsed.data) means
+  // an explicit value in the request always wins over the derived one —
+  // same "override wins" rule the title/milestone/price prefill already
+  // follows just above.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const autoFilled: Record<string, string> = {
+    amount: milestone.price,
+    amountInWords: amountToWords(milestone.price),
+    paymentPurpose: milestone.title,
+    documentDate: todayIso,
+  };
+
+  const designatedPayer = await getDesignatedPayer();
+
+  if (body.type === "invoice") {
+    autoFilled.dueDate = todayIso;
+    autoFilled.agreementDate = todayIso;
+
+    // billedToName/billedToAttention are always about the client being
+    // billed, not who's paid, so these stay sourced from the project's
+    // Phase 8 defaults regardless of whether a designated payer exists.
+    if (project.billedToName) autoFilled.billedToName = project.billedToName;
+    if (project.billedToAttention) autoFilled.billedToAttention = project.billedToAttention;
+
+    // Payment block + signatory (docs/phases-plan-revision-2.md Phase
+    // 14/15/16): the designated payer's own profile is the only source
+    // for these fields now — see lib/documents/payer-fields.ts for the
+    // full reasoning, shared with the AR branch below and with the
+    // Refresh action (.../[documentId]/refresh/route.ts).
+    Object.assign(autoFilled, await getInvoicePayerFields(designatedPayer));
+
+    const [{ totalProjectCost }] = await db
+      .select({ totalProjectCost: sql<string>`coalesce(sum(${milestones.price}), 0)` })
+      .from(milestones)
+      .where(eq(milestones.projectId, projectId));
+    autoFilled.totalProjectCost = totalProjectCost;
+  } else {
+    // AR payer-linked fields (docs/phases-plan-revision-2.md Phase 16):
+    // receivedByName/receivedByTitle/receivedBySignatureUrl now come
+    // from the designated payer, same live link invoices already had —
+    // previously these had no auto-fill at all here (DOCUMENT_DEFAULTS'
+    // static name was only ever used by the client-side dead-code path
+    // in project-documents-section.tsx, never server-side). With no
+    // payer designated yet, these are simply left blank, same as any
+    // other field nothing has filled in yet.
+    Object.assign(autoFilled, getArPayerFields(designatedPayer));
+  }
+
   const [created] = await db
     .insert(projectDocuments)
     .values({
@@ -107,6 +168,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       title: overrideParsed.data.title ?? project.title,
       milestone: overrideParsed.data.milestone ?? milestone.title,
       price: overrideParsed.data.price ?? milestone.price,
+      ...autoFilled,
       ...fieldsParsed.data,
       createdByUserId: auth.user.id,
     })

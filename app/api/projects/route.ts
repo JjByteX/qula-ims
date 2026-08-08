@@ -46,17 +46,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  const { title, milestone, ...billingDefaults } = parsed.data;
+
   const [createdProject] = await db
     .insert(projects)
-    .values({ title: parsed.data.title, createdByUserId: auth.user.id })
+    .values({ title, ...billingDefaults, createdByUserId: auth.user.id })
     .returning();
 
   const [createdMilestone] = await db
     .insert(milestones)
     .values({
       projectId: createdProject.id,
-      title: parsed.data.milestone.title,
-      price: parsed.data.milestone.price,
+      title: milestone.title,
+      price: milestone.price,
       sortOrder: "0",
       createdByUserId: auth.user.id,
     })

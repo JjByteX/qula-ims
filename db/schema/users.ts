@@ -24,6 +24,18 @@ export const users = pgTable("users", {
   description: text("description"),
   profilePictureUrl: text("profile_picture_url"),
 
+  // Payment profile (docs/phases-plan-revision-1.md Phase 12). All
+  // nullable — a user with none of these set just has an incomplete
+  // payment profile, not an error. Only meaningful once this user is
+  // (or might become) the designated payer; every other user can leave
+  // these blank forever.
+  paymentQrCodeUrl: text("payment_qr_code_url"),
+  paymentMethod: text("payment_method"),
+  paymentAccountName: text("payment_account_name"),
+  paymentBank: text("payment_bank"),
+  paymentAccountNumber: text("payment_account_number"),
+  paymentSignatureUrl: text("payment_signature_url"),
+
   // Access control
   role: userRoleEnum("role").notNull().default("user"),
   status: userStatusEnum("status").notNull().default("pending"),

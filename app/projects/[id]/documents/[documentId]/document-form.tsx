@@ -279,12 +279,6 @@ export function DocumentForm({
             />
           </div>
           <Field
-            id="paymentReferenceNote"
-            label="Reference/Note to include"
-            error={(errors as Record<string, { message?: string }>).paymentReferenceNote?.message}
-            {...register("paymentReferenceNote" as keyof DocumentFormValues)}
-          />
-          <Field
             id="issuedBy"
             label="Issued By"
             error={(errors as Record<string, { message?: string }>).issuedBy?.message}
