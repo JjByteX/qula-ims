@@ -5,6 +5,7 @@ import { projectDocuments } from "@/db/schema";
 import { arDocumentSchema, invoiceDocumentSchema } from "@/lib/validation/documents";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
+import { diffFields } from "@/lib/activity/diff";
 
 // Edits a generated document's fields (phases-plan 3.2). isPaid is a
 // separate toggle endpoint (phases-plan 3.4), not part of this general
@@ -42,13 +43,16 @@ export async function PATCH(
     .where(eq(projectDocuments.id, documentId))
     .returning();
 
-  await logActivity({
-    actorUserId: auth.user.id,
-    action: existing.type === "ar" ? "ar.edited" : "invoice.edited",
-    targetType: "document",
-    targetId: documentId,
-    detail: { projectId, fields: Object.keys(parsed.data) },
-  });
+  const changedFields = diffFields(existing, parsed.data);
+  if (changedFields.length > 0) {
+    await logActivity({
+      actorUserId: auth.user.id,
+      action: existing.type === "ar" ? "ar.edited" : "invoice.edited",
+      targetType: "document",
+      targetId: documentId,
+      detail: { projectId, fields: changedFields },
+    });
+  }
 
   return NextResponse.json({ document: updated });
 }

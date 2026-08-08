@@ -5,6 +5,7 @@ import { projects } from "@/db/schema";
 import { projectSchema } from "@/lib/validation/projects";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
+import { diffFields } from "@/lib/activity/diff";
 import { getProjectDetail } from "@/lib/projects/queries";
 
 // Backs the milestones dialog (MilestonesDialogProvider), which opens as
@@ -58,13 +59,16 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     .where(eq(projects.id, id))
     .returning();
 
-  await logActivity({
-    actorUserId: auth.user.id,
-    action: "project.edited",
-    targetType: "project",
-    targetId: id,
-    detail: { fields: Object.keys(parsed.data) },
-  });
+  const changedFields = diffFields(existing, parsed.data);
+  if (changedFields.length > 0) {
+    await logActivity({
+      actorUserId: auth.user.id,
+      action: "project.edited",
+      targetType: "project",
+      targetId: id,
+      detail: { fields: changedFields },
+    });
+  }
 
   return NextResponse.json({ project: updated });
 }

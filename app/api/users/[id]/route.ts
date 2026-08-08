@@ -13,6 +13,7 @@ import {
   StorageValidationError,
 } from "@/lib/storage";
 import { logActivity } from "@/lib/activity/log";
+import { diffFields } from "@/lib/activity/diff";
 
 // Profile view (phases-plan 1.7 / Client-Requests.md "Anyone can view any
 // profile"). Any signed-in user, no self-or-superadmin check — that
@@ -193,13 +194,26 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       status: users.status,
     });
 
-  await logActivity({
-    actorUserId: auth.user.id,
-    action: "user.edited",
-    targetType: "user",
-    targetId: id,
-    detail: { fields: Object.keys(parsed.data) },
-  });
+  // diffFields only sees parsed.data's text fields — profilePictureUrl/
+  // paymentQrCodeUrl/paymentSignatureUrl are set above from an uploaded
+  // file, entirely outside parsed.data, so they need their own before/
+  // after comparison or a picture-only/signature-only save would go
+  // completely unlogged.
+  const changedFields = [
+    ...diffFields(target, parsed.data),
+    ...(profilePictureUrl !== target.profilePictureUrl ? ["profilePicture"] : []),
+    ...(paymentQrCodeUrl !== target.paymentQrCodeUrl ? ["paymentQrCode"] : []),
+    ...(paymentSignatureUrl !== target.paymentSignatureUrl ? ["paymentSignature"] : []),
+  ];
+  if (changedFields.length > 0) {
+    await logActivity({
+      actorUserId: auth.user.id,
+      action: "user.edited",
+      targetType: "user",
+      targetId: id,
+      detail: { fields: changedFields },
+    });
+  }
 
   return NextResponse.json({ profile: updated });
 }

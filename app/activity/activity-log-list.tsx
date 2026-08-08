@@ -50,10 +50,12 @@ const ACTIONS = [
   "milestone.reordered",
   "invoice.created",
   "invoice.edited",
+  "invoice.refreshed",
   "invoice.marked_paid",
   "invoice.marked_unpaid",
   "ar.created",
   "ar.edited",
+  "ar.refreshed",
   "settings.notification_days_updated",
   "settings.designated_payer_updated",
 ] as const;
@@ -216,7 +218,7 @@ export function ActivityLogList({
       {entries.length > 0 && (
         <Card className="flex flex-col divide-y divide-[var(--border)] overflow-hidden">
           {entries.map((entry) => {
-            const detail = formatDetail(entry.detail);
+            const detail = formatDetail(entry.action, entry.detail);
             return (
               <div
                 key={entry.id}
@@ -229,10 +231,6 @@ export function ActivityLogList({
                     {detail && (
                       <span className="text-[var(--muted-foreground)]"> — {detail}</span>
                     )}
-                  </p>
-                  <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                    {entry.targetType}
-                    {entry.targetId ? ` · ${entry.targetId.slice(0, 8)}` : ""}
                   </p>
                 </div>
                 <p className="shrink-0 text-[var(--text-sm)] text-[var(--muted-foreground)]">

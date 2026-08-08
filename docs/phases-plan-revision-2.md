@@ -411,11 +411,159 @@ editor cruft.
 - Every upload function's own validation (file type, size limits) —
   unchanged; only where the bytes end up differs.
 
+## Phase 18, Invoice/AR Only For Completed Milestones
+
+### 18.1 Problem
+The milestone menu let you create an invoice or AR for a milestone that
+wasn't marked done yet — billing for work that isn't finished isn't a
+real case this app needs to support, and the existing "No invoice or AR"
+warning badge (shown when a milestone is completed but has no document)
+already implies the intended order is complete, then document.
+
+### 18.2 UI
+`milestones-section.tsx`: the 3-dot menu's dropdown content is now
+conditional on `milestone.status`. Completed shows the same two items as
+before (Invoice, Acknowledgement Receipt). Not completed shows one item
+instead, in the same position: "Mark as done to create invoice/AR" —
+clicking it calls the existing `handleToggleComplete`, with
+`event.preventDefault()` inside `onSelect` so the menu stays open through
+the click instead of closing (Radix's default). Once the milestone's
+status flips to completed, the same open dropdown re-renders showing the
+real Invoice/AR items, no second click on the trigger needed. A milestone
+already completed is completely unaffected — same two items, same
+behavior as before this phase.
+
+### 18.3 API
+`POST /api/projects/[id]/documents`: added a `milestone.status !==
+"completed"` check returning 400, since the create-document endpoint is
+reachable by any authenticated client directly and shouldn't rely on the
+UI alone to enforce this. Placed after the existing per-type-per-milestone
+document lookup, not before — a milestone that was completed, had a
+document made, and was later reopened should still return that existing
+document (same "just open it" rule that check already follows) rather
+than being blocked by the new one.
+
+### 18.4 What doesn't change
+- A completed milestone's dropdown, and the existing-document dedup
+  behavior in `handleCreateDocument` — unaffected either way.
+- The "No invoice or AR" warning badge — still fires the same way
+  (completed, no document yet), still accurate since a milestone can
+  still be marked done via the checkmark button directly without going
+  through this dropdown.
+- `project-documents-section.tsx`'s dead-code milestone picker — doesn't
+  filter by status, but is protected by the same server-side guard as
+  any other caller of the create-document endpoint.
+
+## Phase 19, Activity Log In Plain English
+
+### 19.1 Problem
+The activity log was written for a technical reader, not the actual
+audience. `actionLabel` derived its text by splitting the action string
+and replacing underscores with spaces, which produced awkward results
+for compound action names (`budget.allocated_funds_updated` -> "Budget
+allocated funds updated"). `formatDetail` dumped the raw `detail` object
+as `key: value` pairs joined by commas, showing camelCase field names
+(`fields: paymentMethod,billedToName`), raw database IDs
+(`milestoneId: 8f3a2c19-...`), and unformatted numbers straight from the
+column. Each row also printed a second line with the raw `targetType`
+string and a sliced UUID (`project · 8f3a2c19`), meaningless to a
+non-technical reader and redundant with the row above it.
+
+### 19.2 Rewrite
+`lib/activity/format.ts`:
+- `actionLabel`: replaced the string-split with an explicit
+  `ACTION_LABELS` map, one hand-written plain-English verb phrase per
+  action (e.g. "updated the budget", "changed who receives payment").
+  Kept in sync with the `ACTIONS` filter list in
+  `activity-log-list.tsx` — every action in that dropdown has an entry
+  here (verified 30/30).
+- `formatDetail`: now takes the action name too, and looks up a
+  per-action formatter from `DETAIL_FORMATTERS` instead of dumping the
+  raw object. Each formatter knows its own action's `detail` shape (from
+  the actual `logActivity()` call sites in `app/api/**`) and renders
+  only what's useful in plain words: a title, an email, a money amount
+  formatted with commas, or a field list translated through
+  `FIELD_LABELS` (`paymentAccountName` -> "payment account name"). A
+  before/after value (budget amount, notification days, expense amount)
+  reads as "50,000 to 75,000" instead of `previous: ..., next: ...`.
+  Actions with nothing useful to add (`milestone.reordered`'s raw
+  milestone ID list, `settings.designated_payer_updated`'s raw user IDs
+  with no lookup available here) correctly show nothing extra — the
+  plain-English label alone is already a complete sentence.
+- Found and fixed along the way: `user.registered` was missing a detail
+  formatter even though it logs the same `email` field `user.created`/
+  `user.approved`/`user.denied` already showed.
+
+### 19.3 UI
+- `activity-log-list.tsx` / `recent-activity.tsx`: both already rendered
+  `{actor} {actionLabel(...).toLowerCase()} — {detail}` as one sentence,
+  so no rendering structure changed — just updated the `formatDetail`
+  call to pass `entry.action` along with `entry.detail`.
+- `activity-log-list.tsx`: removed the second line that printed raw
+  `targetType` + a sliced document/project ID under each entry — with
+  the detail formatters above now supplying the real subject (a title,
+  a field list, an amount), that line was both unreadable and redundant.
+- `activity-log-list.tsx`: added `invoice.refreshed`/`ar.refreshed` to
+  the `ACTIONS` filter list — missing since Phase 16 added the Refresh
+  action, found while cross-checking the list against the new label map.
+
+### 19.4 What doesn't change
+- `lib/activity/log.ts` and every `logActivity()` call site — the
+  `detail` objects written to the database are unchanged; only how
+  they're read back and displayed changed.
+- The activity log's filters (actor/action/date range) and pagination —
+  unaffected.
+
+### 19.5 Fields list showing every field, every time
+Once real data flowed through Phase 19's new field-list formatter, it
+surfaced a problem that formatting alone couldn't fix: `project.edited`/
+`user.edited`/`invoice.edited`/`ar.edited` all built their `fields` list
+from `Object.keys(parsed.data)` — and since none of those three routes
+use `schema.partial()`, `parsed.data` always contains every field the
+schema defines, whether or not the person actually changed it in the
+form. The result was a "fields" list that was really just the entire
+form, every single save, no matter how small the real edit — e.g.
+updating a profile always showed "first name, middle name, last name,
+suffix, contact number, description, payment method, payment account
+name, payment bank, payment account number" regardless of which single
+field actually changed.
+
+New `lib/activity/diff.ts`: `diffFields(before, after)` compares the row
+as it was before the update against the values being written, and
+returns only the keys that actually differ. Values are normalized first
+(`undefined`/`null`/`""` all treated as the same "empty") so an unset
+optional field doesn't register as a false change against another
+equally-unset representation of the same nothing.
+
+All three routes updated to use it:
+- `app/api/projects/[id]/route.ts` — diffs `existing` (the pre-update
+  row, already fetched) against `parsed.data`.
+- `app/api/projects/[id]/documents/[documentId]/route.ts` — same, using
+  `existing`.
+- `app/api/users/[id]/route.ts` — diffs `target` against `parsed.data`
+  for the text fields, plus three separate before/after comparisons for
+  `profilePictureUrl`/`paymentQrCodeUrl`/`paymentSignatureUrl`, which
+  are set from an uploaded file entirely outside `parsed.data` — without
+  those three, a picture-only or signature-only save would diff to
+  nothing and go unlogged even though something real changed.
+
+All three now also skip calling `logActivity` entirely when the diff
+comes back empty (a save where nothing actually changed) rather than
+logging an "updated a profile" entry with nothing behind it — a no-op
+save isn't a real event worth recording.
+
+`invoice.refreshed`/`ar.refreshed` (Phase 16) were not part of this fix
+— those intentionally touch a fixed, known set of fields every time by
+design (that's what Refresh means), so listing the same fields on every
+refresh is accurate, not noise, and there's no "before" values to diff
+against in the same sense.
+
 ## Out of Scope
 
 - Multiple simultaneous designated payers, or a history of past payers
 - Automated tests (still deferred, per the original phases-plan.md)
-- Any change to Budget Splitter, Activity Log viewer, or Dashboard layout
+- Any change to Budget Splitter or Dashboard layout beyond Phase 19's
+  activity-log wording fixes (Recent Activity uses the same formatters)
 - Any change to the per-document edit form's payment fields
   (`document-form.tsx`) — a document can still be hand-edited after
   creation regardless of what auto-filled it, unchanged from Phase 9.3.

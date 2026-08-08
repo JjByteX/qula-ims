@@ -100,6 +100,24 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ document: existing });
   }
 
+  // An invoice or AR only makes sense for finished work
+  // (docs/phases-plan-revision-2.md Phase 18) — the milestone menu's UI
+  // already gates this (app/projects/[id]/milestones-section.tsx shows a
+  // "mark as done" prompt instead of Invoice/AR for an incomplete
+  // milestone), but this endpoint is reachable by any authenticated
+  // client directly, so it needs its own check too rather than relying
+  // on the UI alone. Checked after the existing-document lookup above,
+  // not before: a milestone that was completed, had a document made,
+  // and was later reopened should still return that existing document
+  // (same "just open it" rule the check above already follows) instead
+  // of being blocked by this one.
+  if (milestone.status !== "completed") {
+    return NextResponse.json(
+      { error: "Mark this milestone as done before creating an invoice or AR." },
+      { status: 400 },
+    );
+  }
+
   const schema = body.type === "ar" ? arDocumentSchema : invoiceDocumentSchema;
   const fieldsParsed = schema.partial().safeParse(body);
   if (!fieldsParsed.success) {

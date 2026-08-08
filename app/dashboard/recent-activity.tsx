@@ -34,7 +34,7 @@ export function RecentActivity({ entries }: { entries: RecentActivityEntry[] }) 
           ) : (
             <div className="flex min-h-0 flex-1 flex-col divide-y divide-[var(--border)] overflow-y-auto">
               {entries.map((entry) => {
-                const detail = formatDetail(entry.detail);
+                const detail = formatDetail(entry.action, entry.detail);
                 return (
                   <div
                     key={entry.id}

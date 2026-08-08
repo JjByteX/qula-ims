@@ -472,18 +472,51 @@ export function MilestonesSection({
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem
-                            onSelect={() => handleCreateDocument(milestone.id, "invoice")}
-                          >
-                            <FileText className="size-4" aria-hidden="true" />
-                            Invoice
-                          </DropdownMenuItem>
-                          <DropdownMenuItem
-                            onSelect={() => handleCreateDocument(milestone.id, "ar")}
-                          >
-                            <Receipt className="size-4" aria-hidden="true" />
-                            Acknowledgement Receipt
-                          </DropdownMenuItem>
+                          {milestone.status === "completed" ? (
+                            <>
+                              <DropdownMenuItem
+                                onSelect={() => handleCreateDocument(milestone.id, "invoice")}
+                              >
+                                <FileText className="size-4" aria-hidden="true" />
+                                Invoice
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => handleCreateDocument(milestone.id, "ar")}
+                              >
+                                <Receipt className="size-4" aria-hidden="true" />
+                                Acknowledgement Receipt
+                              </DropdownMenuItem>
+                            </>
+                          ) : (
+                            // Docs/phases-plan-revision-2.md Phase 18: an
+                            // invoice or AR only ever makes sense for a
+                            // finished milestone — billing for work not
+                            // done yet isn't a real case this app needs
+                            // to support. Rather than let the person pick
+                            // Invoice/AR and then fail or produce a
+                            // document for unfinished work, this same
+                            // menu position asks to mark the milestone
+                            // done first. preventDefault keeps the menu
+                            // open through the click (Radix's default is
+                            // to close on select) — handleToggleComplete
+                            // flips milestone.status, which re-renders
+                            // this same DropdownMenuContent showing the
+                            // real Invoice/AR items above instead,
+                            // without the person needing to reopen the
+                            // menu.
+                            <DropdownMenuItem
+                              onSelect={(e) => {
+                                e.preventDefault();
+                                handleToggleComplete(milestone);
+                              }}
+                              disabled={busyId === milestone.id}
+                            >
+                              <CircleCheck className="size-4" aria-hidden="true" />
+                              {busyId === milestone.id
+                                ? "Marking as done..."
+                                : "Mark as done to create invoice/AR"}
+                            </DropdownMenuItem>
+                          )}
                         </DropdownMenuContent>
                       </DropdownMenu>
                     </div>
