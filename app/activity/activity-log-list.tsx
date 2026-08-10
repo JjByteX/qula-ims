@@ -1,11 +1,13 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { actionLabel, actorName, formatTimestamp, formatDetail } from "@/lib/activity/format";
+import useAutoTableRows from "@/lib/hooks/useAutoTableRows";
 
 export type ActivityEntry = {
   id: string;
@@ -65,7 +67,7 @@ const EMPTY_FILTERS: Filters = { actor: "", action: "", from: "", to: "" };
 export function ActivityLogList({
   initialEntries,
   initialTotal,
-  pageSize,
+  pageSize: initialPageSize,
   actors,
 }: {
   initialEntries: ActivityEntry[];
@@ -80,19 +82,39 @@ export function ActivityLogList({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Auto-fit pagination (same hook the projects table uses). The activity
+  // log is server-paginated (DB query with LIMIT/OFFSET, not everything
+  // loaded client-side), so — unlike the projects table's client-side
+  // slice — this needs to actually ask the server for the row count that
+  // fits, via per_page below, rather than slicing an already-fetched array.
+  const { containerRef: tableCardRef, rowsPerPage } = useAutoTableRows({ minRows: 3 });
+  const [pageSize, setPageSize] = useState(initialPageSize);
+
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
-  const isFirstLoad = page === 1 && Object.values(filters).every((v) => !v);
+  const isFirstLoad = page === 1 && pageSize === initialPageSize && Object.values(filters).every((v) => !v);
+
+  // When the fitted row count changes, adopt it as the active page size —
+  // debounced via the effect below re-fetching page 1, mirroring
+  // amkor-ims's onPageSizeChange correction flow.
+  useEffect(() => {
+    if (rowsPerPage === pageSize) return;
+    const timer = setTimeout(() => {
+      setPageSize(rowsPerPage);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [rowsPerPage, pageSize]);
 
   useEffect(() => {
     // Skip the extra fetch on mount — the server component already
-    // loaded page 1 with no filters.
+    // loaded page 1 with no filters at the initial page size.
     if (isFirstLoad) return;
 
     const controller = new AbortController();
     setLoading(true);
     setError(null);
 
-    const params = new URLSearchParams({ page: String(page) });
+    const params = new URLSearchParams({ page: String(page), per_page: String(pageSize) });
     if (filters.actor) params.set("actor", filters.actor);
     if (filters.action) params.set("action", filters.action);
     if (filters.from) params.set("from", filters.from);
@@ -114,7 +136,7 @@ export function ActivityLogList({
 
     return () => controller.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, filters]);
+  }, [page, pageSize, filters]);
 
   function updateFilter(key: keyof Filters, value: string) {
     setPage(1);
@@ -129,8 +151,8 @@ export function ActivityLogList({
   const hasActiveFilters = Object.values(filters).some((v) => v);
 
   return (
-    <div className="flex flex-col gap-4">
-      <Card className="flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:flex-wrap">
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <Card className="shrink-0 flex flex-col gap-4 p-4 sm:flex-row sm:items-end sm:flex-wrap">
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="activity-actor" className="text-[var(--text-sm)]">
             Actor
@@ -203,70 +225,115 @@ export function ActivityLogList({
       </Card>
 
       {error && (
-        <p className="text-[var(--text-sm)] text-[var(--destructive)]">{error}</p>
+        <p className="shrink-0 text-[var(--text-sm)] text-[var(--destructive)]">{error}</p>
       )}
 
-      {!loading && entries.length === 0 && (
+      {!loading && entries.length === 0 ? (
         <Card className="flex items-center justify-center p-10 text-[var(--text-sm)] text-[var(--muted-foreground)]">
           {hasActiveFilters
             ? "No activity matches these filters."
             : "No activity has been logged yet."}
         </Card>
-      )}
+      ) : (
+        <>
+          {/* containerRef is what useAutoTableRows measures: the available
+              height for card + pagination bar together. This table is
+              server-paginated, so a fitted row count change re-requests
+              page 1 at the new per_page (see the effect above) rather
+              than slicing an already-fetched array like the projects
+              table does. */}
+          <div ref={tableCardRef} className="flex min-h-0 flex-1 flex-col gap-2">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)]">
+              <table className="w-full table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-[18%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[42%]" />
+                  <col className="w-[20%]" />
+                </colgroup>
+                <thead className="shrink-0 border-b border-[var(--border)] bg-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Actor
+                    </th>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Action
+                    </th>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Detail
+                    </th>
+                    <th className="px-4 py-2 text-right text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Time
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-soft)]">
+                  {entries.map((entry) => {
+                    const detail = formatDetail(entry.action, entry.detail);
+                    return (
+                      <tr key={entry.id}>
+                        <td className="truncate px-4 py-2 align-top text-[var(--text-base)] font-semibold text-[var(--foreground)]">
+                          {actorName(entry)}
+                        </td>
+                        <td className="px-4 py-2 align-top text-[var(--text-sm)] text-[var(--foreground)]">
+                          {actionLabel(entry.action)}
+                        </td>
+                        <td className="truncate px-4 py-2 align-top text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                          {detail ?? "-"}
+                        </td>
+                        <td className="px-4 py-2 text-right align-top text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                          {formatTimestamp(entry.createdAt)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
 
-      {entries.length > 0 && (
-        <Card className="flex flex-col divide-y divide-[var(--border-soft)] overflow-hidden">
-          {entries.map((entry) => {
-            const detail = formatDetail(entry.action, entry.detail);
-            return (
-              <div
-                key={entry.id}
-                className="flex flex-col gap-1 px-4 py-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4"
-              >
-                <div className="flex flex-col gap-0.5">
-                  <p className="text-[var(--text-sm)] text-[var(--foreground)]">
-                    <span className="font-semibold">{actorName(entry)}</span>{" "}
-                    {actionLabel(entry.action).toLowerCase()}
-                    {detail && (
-                      <span className="text-[var(--muted-foreground)]"> — {detail}</span>
-                    )}
-                  </p>
-                </div>
-                <p className="shrink-0 text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                  {formatTimestamp(entry.createdAt)}
+            {totalPages > 1 && (
+              <div className="flex shrink-0 items-center justify-between px-1">
+                <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                  Showing{" "}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {(page - 1) * pageSize + 1}
+                    {"\u2013"}
+                    {Math.min(page * pageSize, total)}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold text-[var(--foreground)]">{total}</span>{" "}
+                  entries
                 </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Previous page"
+                    disabled={page <= 1 || loading}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="size-4" aria-hidden="true" />
+                  </Button>
+                  <span className="px-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                    Page{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{page}</span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{totalPages}</span>
+                  </span>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Next page"
+                    disabled={page >= totalPages || loading}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <ChevronRight className="size-4" aria-hidden="true" />
+                  </Button>
+                </div>
               </div>
-            );
-          })}
-        </Card>
-      )}
-
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between">
-          <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            Page {page} of {totalPages} · {total} entries
-          </p>
-          <div className="flex gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page <= 1 || loading}
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-            >
-              Previous
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages || loading}
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            >
-              Next
-            </Button>
+            )}
           </div>
-        </div>
+        </>
       )}
     </div>
   );

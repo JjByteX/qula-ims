@@ -4,7 +4,8 @@ import { db } from "@/db/client";
 import { activityLog, users } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
 
-const PAGE_SIZE = 25;
+const DEFAULT_PAGE_SIZE = 25;
+const MAX_PAGE_SIZE = 100;
 
 // Full activity log (phases-plan 4.3), open to any signed-in user — the
 // log itself carries no view restriction in Client-Requests.md, unlike
@@ -19,6 +20,15 @@ export async function GET(request: Request) {
   const from = params.get("from") || undefined; // YYYY-MM-DD
   const to = params.get("to") || undefined; // YYYY-MM-DD
   const page = Math.max(1, Number(params.get("page")) || 1);
+  // per_page is caller-supplied (the table's auto-fit row count) rather than
+  // a fixed constant — same viewport-driven page size the projects table
+  // and amkor-ims's DataTable use. Clamped so a bad/huge value from the
+  // client can't force an oversized query.
+  const requestedPageSize = Number(params.get("per_page"));
+  const pageSize =
+    Number.isFinite(requestedPageSize) && requestedPageSize > 0
+      ? Math.min(MAX_PAGE_SIZE, Math.floor(requestedPageSize))
+      : DEFAULT_PAGE_SIZE;
 
   const conditions = [
     actorUserId ? eq(activityLog.actorUserId, actorUserId) : undefined,
@@ -50,14 +60,14 @@ export async function GET(request: Request) {
     .leftJoin(users, eq(activityLog.actorUserId, users.id))
     .where(where)
     .orderBy(desc(activityLog.createdAt))
-    .limit(PAGE_SIZE)
-    .offset((page - 1) * PAGE_SIZE);
+    .limit(pageSize)
+    .offset((page - 1) * pageSize);
 
   return NextResponse.json({
     entries,
     page,
-    pageSize: PAGE_SIZE,
+    pageSize,
     total,
-    totalPages: Math.max(1, Math.ceil(total / PAGE_SIZE)),
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
   });
 }
