@@ -4,7 +4,7 @@ import { milestones, projects } from "@/db/schema";
 import { projectSchema, milestoneSchema } from "@/lib/validation/projects";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
-import { getProjectsWithComputedPrice } from "@/lib/projects/queries";
+import { getProjectsListRows } from "@/lib/projects/queries";
 
 // Any signed-in user can view and create projects (phases-plan 3.1 /
 // Client-Requests.md "Regular users can edit everything else in the
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   // what's actually ongoing — ?status=archived or ?status=all opts back
   // in, for a future "view archived" toggle rather than a separate page.
   const status = new URL(request.url).searchParams.get("status");
-  const list = await getProjectsWithComputedPrice(
+  const list = await getProjectsListRows(
     status === "all" ? "all" : status === "archived" ? "archived" : "active",
   );
 

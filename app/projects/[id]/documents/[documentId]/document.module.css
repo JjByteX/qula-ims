@@ -107,6 +107,16 @@
   width: 80%;
 }
 
+/* When a signature image directly precedes the printed line (AR view's
+   "Received By" cell), it should sit right on the line rather than up
+   near the name/title with a 40px gap under it — so this overrides
+   .signatureLine's margin-top down to just enough room for the image's
+   own height, and the image gets a small negative bottom margin to
+   pull it down onto the line instead of floating just above it. */
+.signatureImage + .signatureLine {
+  margin-top: 4px;
+}
+
 .qrBox {
   display: flex;
   align-items: center;
@@ -118,6 +128,28 @@
   max-width: 130px;
   max-height: 130px;
   object-fit: contain;
+}
+
+/* Signature images specifically (as opposed to the QR box above, which
+   stays centered with a fixed min-height since a QR code is meant to
+   look like a stamped box). Left-aligned, not centered, and no
+   min-height — a signature is typically a small mark on a much larger
+   transparent PNG canvas, so this caps the rendered box tightly to the
+   image's own aspect ratio instead of reserving a fixed-height row
+   that pushes the name/title text below it down further than the
+   actual ink on the page warrants. */
+.signatureBox {
+  display: block;
+  text-align: left;
+}
+
+.signatureImage {
+  display: block;
+  max-width: 160px;
+  max-height: 70px;
+  margin-bottom: -8px;
+  object-fit: contain;
+  object-position: left bottom;
 }
 
 .footerText {

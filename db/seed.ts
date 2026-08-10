@@ -197,11 +197,30 @@ type SeedMilestone = {
   title: string;
   price: string;
   status: "pending" | "completed";
+  // ISO date string ("YYYY-MM-DD"), only meaningful when status is
+  // "completed" — matches the real AR issue date for the two paid
+  // milestones below rather than defaulting to whenever the seed script
+  // happens to run.
+  completedAt?: string;
 };
 
 const FNB_MILESTONES: SeedMilestone[] = [
-  { title: "Project Mobilization and Initial Development", price: "20000.00", status: "completed" },
-  { title: "Core Features Completion", price: "15000.00", status: "completed" },
+  {
+    title: "Project Mobilization and Initial Development",
+    price: "20000.00",
+    status: "completed",
+    // Matches AR-2026-001's real issue date (FNB_PAID_MILESTONES below)
+    // — a milestone can't be marked completed after its AR was already
+    // issued for it, so this is the same date, not "whenever the seed
+    // script happens to run" (new Date()).
+    completedAt: "2026-06-26",
+  },
+  {
+    title: "Core Features Completion",
+    price: "15000.00",
+    status: "completed",
+    completedAt: "2026-06-25",
+  },
   { title: "Final Deployment and Project Completion", price: "15000.00", status: "pending" },
   {
     title: "Development Resources, Infrastructure, and Third-Party Services",
@@ -212,7 +231,17 @@ const FNB_MILESTONES: SeedMilestone[] = [
 
 // For the 2 completed milestones, matching a paid invoice + AR each —
 // numbers, dates, and amount-in-words specific to each milestone's price.
-type SeedDocumentPair = { milestoneTitle: string; amount: string; amountInWords: string; documentNumberSuffix: string };
+// arDocumentDate is separate from the invoice's documentDate below (both
+// used to share one hardcoded "2026-06-25") since the real AR-2026-001
+// document was actually issued the next day, June 26 — the invoice date
+// stays June 25 for both pairs, only the AR date differs per milestone.
+type SeedDocumentPair = {
+  milestoneTitle: string;
+  amount: string;
+  amountInWords: string;
+  documentNumberSuffix: string;
+  arDocumentDate: string;
+};
 
 const FNB_PAID_MILESTONES: SeedDocumentPair[] = [
   {
@@ -220,12 +249,14 @@ const FNB_PAID_MILESTONES: SeedDocumentPair[] = [
     amount: "20000.00",
     amountInWords: "Twenty Thousand Pesos Only",
     documentNumberSuffix: "001",
+    arDocumentDate: "2026-06-26",
   },
   {
     milestoneTitle: "Core Features Completion",
     amount: "15000.00",
     amountInWords: "Fifteen Thousand Pesos Only",
     documentNumberSuffix: "002",
+    arDocumentDate: "2026-06-25",
   },
 ];
 
@@ -280,7 +311,18 @@ async function seedFnbProject() {
         .set({
           price: seedMilestone.price,
           status: seedMilestone.status,
-          completedAt: seedMilestone.status === "completed" ? (existing.completedAt ?? new Date()) : null,
+          // Synced to the seed's own fixed date every run (not "keep
+          // whatever's already in the DB") — completedAt has to match
+          // the matching AR's arDocumentDate below (a milestone can't
+          // be completed after its own AR was issued), and the old
+          // `existing.completedAt ?? new Date()` fallback meant a
+          // milestone seeded before this fixed date existed would stay
+          // stuck on its original seed-time timestamp forever, drifting
+          // from the AR date instead of tracking it.
+          completedAt:
+            seedMilestone.status === "completed" && seedMilestone.completedAt
+              ? new Date(`${seedMilestone.completedAt}T00:00:00Z`)
+              : null,
           sortOrder: String(index),
           updatedAt: new Date(),
         })
@@ -293,7 +335,10 @@ async function seedFnbProject() {
           title: seedMilestone.title,
           price: seedMilestone.price,
           status: seedMilestone.status,
-          completedAt: seedMilestone.status === "completed" ? new Date() : null,
+          completedAt:
+            seedMilestone.status === "completed" && seedMilestone.completedAt
+              ? new Date(`${seedMilestone.completedAt}T00:00:00Z`)
+              : null,
           sortOrder: String(index),
           createdByUserId,
         })
@@ -302,21 +347,60 @@ async function seedFnbProject() {
     }
   }
 
-  // Refresh the map with real ids/status after the upsert loop above.
+  // Refresh the map with real ids/status/price after the upsert loop
+  // above — this (not FNB_MILESTONES/FNB_PAID_MILESTONES's own string
+  // literals) is now the single source of truth the document-insert
+  // loop below reads from, so a milestone's title/price and the
+  // project's billing fields can never drift out of sync with the
+  // invoice/AR generated for them.
   const milestonesAfterUpsert = await db
     .select()
     .from(schema.milestones)
     .where(eq(schema.milestones.projectId, project.id));
-  const milestoneIdByTitle = new Map(milestonesAfterUpsert.map((m) => [m.title, m.id]));
+  const milestoneByTitleAfterUpsert = new Map(milestonesAfterUpsert.map((m) => [m.title, m]));
 
   const existingDocuments = await db
     .select()
     .from(schema.projectDocuments)
     .where(eq(schema.projectDocuments.projectId, project.id));
 
+  // Remaining Balance is always derived now (lib/documents/balance.ts:
+  // sum of all milestone prices minus sum of milestones already "done"),
+  // never a hand-typed number — so the seed has to compute it the same
+  // way instead of hardcoding a value that can silently go stale (the
+  // second seeded AR used to just say "0.00", which only happened to be
+  // right for this particular set of milestone prices by coincidence).
+  // totalProjectCost is the sum of every *actual* milestone row's price
+  // (not FNB_MILESTONES' own copy of those numbers) so it can never
+  // disagree with what the milestones section of the app itself would
+  // add up to. doneTotal accumulates as each paired AR below is
+  // "issued", in the same order FNB_PAID_MILESTONES lists them.
+  const totalProjectCost = milestonesAfterUpsert.reduce((sum, m) => sum + Number(m.price), 0);
+  let doneTotal = 0;
+
   for (const pair of FNB_PAID_MILESTONES) {
-    const milestoneId = milestoneIdByTitle.get(pair.milestoneTitle);
-    if (!milestoneId) continue;
+    // The milestone row itself — not FNB_PAID_MILESTONES' own amount/
+    // milestoneTitle copies — is the source of truth for what this
+    // document bills. Its title and price are read straight off the row
+    // below (milestone.title/milestone.price), same as
+    // app/api/projects/[id]/documents/route.ts's real create flow
+    // already does for a document made through the app. amount and
+    // amountInWords stay on FNB_PAID_MILESTONES only because
+    // amountInWords has no DB column to derive from — but amount itself
+    // is asserted against milestone.price just below so the two can't
+    // silently disagree.
+    const milestone = milestoneByTitleAfterUpsert.get(pair.milestoneTitle);
+    if (!milestone) continue;
+
+    if (milestone.price !== pair.amount) {
+      throw new Error(
+        `Seed data out of sync: milestone "${pair.milestoneTitle}" has price ${milestone.price} ` +
+          `but its paired document amount is ${pair.amount}. Update FNB_MILESTONES or ` +
+          `FNB_PAID_MILESTONES so the two agree before re-running the seed.`,
+      );
+    }
+
+    const milestoneId = milestone.id;
 
     const hasInvoice = existingDocuments.some(
       (doc) => doc.milestoneId === milestoneId && doc.type === "invoice",
@@ -328,19 +412,19 @@ async function seedFnbProject() {
         projectId: project.id,
         milestoneId,
         type: "invoice",
-        title: FNB_PROJECT_TITLE,
-        milestone: pair.milestoneTitle,
-        price: pair.amount,
+        title: project.title,
+        milestone: milestone.title,
+        price: milestone.price,
         documentNumber: `INV-2026-${pair.documentNumberSuffix}`,
         documentDate: "2026-06-25",
         dueDate: "2026-07-09",
-        billedToName: "Liquor Inventory Solution",
-        billedToAttention: "Lourd Borromeo",
-        amount: pair.amount,
+        billedToName: project.billedToName,
+        billedToAttention: project.billedToAttention,
+        amount: milestone.price,
         amountInWords: pair.amountInWords,
-        paymentPurpose: pair.milestoneTitle,
+        paymentPurpose: milestone.title,
         agreementDate: "2026-06-25",
-        totalProjectCost: "54000.00",
+        totalProjectCost: totalProjectCost.toFixed(2),
         paymentMethod: "InstaPay",
         paymentAccountName: "Rasty Espartero",
         paymentBank: "MariBank",
@@ -351,22 +435,28 @@ async function seedFnbProject() {
       });
     }
 
+    // doneTotal advances regardless of hasAr below, so a re-run against
+    // an already-seeded DB still lands on the correct running balance
+    // for whichever pairs do get (re-)inserted this pass.
+    doneTotal += Number(milestone.price);
+    const remainingBalance = (totalProjectCost - doneTotal).toFixed(2);
+
     if (!hasAr) {
       await db.insert(schema.projectDocuments).values({
         projectId: project.id,
         milestoneId,
         type: "ar",
-        title: FNB_PROJECT_TITLE,
-        milestone: pair.milestoneTitle,
-        price: pair.amount,
+        title: project.title,
+        milestone: milestone.title,
+        price: milestone.price,
         documentNumber: `AR-2026-${pair.documentNumberSuffix}`,
-        documentDate: "2026-06-25",
-        receivedFromName: "Liquor Inventory Solution",
-        receivedFromAttention: "Lourd Borromeo",
-        amount: pair.amount,
+        documentDate: pair.arDocumentDate,
+        receivedFromName: project.billedToName,
+        receivedFromAttention: project.billedToAttention,
+        amount: milestone.price,
         amountInWords: pair.amountInWords,
-        paymentPurpose: pair.milestoneTitle,
-        remainingBalance: "0.00",
+        paymentPurpose: milestone.title,
+        remainingBalance,
         receivedByName: "Espartero, Rasty",
         receivedByTitle: "Project Lead",
         createdByUserId,

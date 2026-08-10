@@ -48,7 +48,7 @@ export function BudgetSnapshot({ initialSnapshot }: { initialSnapshot: Snapshot 
           </div>
 
           {enabled && splits.length > 0 && (
-            <div className="flex flex-col divide-y divide-[var(--border)] border-t border-[var(--border)]">
+            <div className="flex flex-col divide-y divide-[var(--border-soft)] border-t border-[var(--border)]">
               {splits.map((split) => (
                 <div
                   key={split.userId}

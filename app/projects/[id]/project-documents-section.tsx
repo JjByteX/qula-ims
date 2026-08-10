@@ -47,18 +47,21 @@ function emptyArDefaults(
   milestone: string;
   price: string;
 } {
+  // documentNumber and remainingBalance are no longer part of
+  // ArDocumentInput (lib/validation/documents.ts) — both are always
+  // generated/derived server-side now (lib/documents/numbering.ts,
+  // lib/documents/balance.ts), so this client-side default builder has
+  // nothing to prefill for either.
   return {
     title: project.title,
     milestone: milestone.title,
     price: milestone.price,
-    documentNumber: "",
     documentDate: todayIso(),
     receivedFromName: project.billedToName ?? "",
     receivedFromAttention: project.billedToAttention ?? "",
     amount: milestone.price,
     amountInWords: amountToWords(milestone.price),
     paymentPurpose: milestone.title,
-    remainingBalance: "",
     receivedByName: DOCUMENT_DEFAULTS.receivedByName,
     receivedByTitle: DOCUMENT_DEFAULTS.receivedByTitle,
   };
@@ -77,11 +80,15 @@ function emptyInvoiceDefaults(
     .reduce((sum, m) => sum + Number(m.price), 0)
     .toFixed(2);
 
+  // documentNumber is no longer part of InvoiceDocumentInput
+  // (lib/validation/documents.ts) — it's always generated server-side
+  // now (lib/documents/numbering.ts), so this client-side default
+  // builder has nothing to prefill for it, same as emptyArDefaults
+  // above.
   return {
     title: project.title,
     milestone: milestone.title,
     price: milestone.price,
-    documentNumber: "",
     documentDate: todayIso(),
     dueDate: todayIso(),
     billedToName: project.billedToName ?? "",
@@ -247,7 +254,7 @@ export function ProjectDocumentsSection({
             No invoices or acknowledgement receipts yet.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-[var(--border)]">
+          <div className="flex flex-col divide-y divide-[var(--border-soft)]">
             {documents.map((document) => {
               const isUploaded = !!document.fileUrl;
               const href = isUploaded

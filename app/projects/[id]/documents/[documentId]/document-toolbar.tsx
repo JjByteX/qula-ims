@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Printer, Pencil, RefreshCw, CircleCheck, CircleX, ChevronLeft } from "lucide-react";
+import { Printer, Pencil, RefreshCw, ChevronLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -26,6 +26,15 @@ import styles from "./document.module.css";
 // receives payment"), the same way the signature already was. Uploading
 // one per document was a second, redundant place to set the same image.
 //
+// No manual "Mark as paid" button here either — Client-Requests.md: an
+// invoice is paid once its acknowledgement receipt exists, so creating
+// the AR is what marks the invoice paid now (POST
+// .../documents/route.ts, in the `type === "ar"` branch), not a
+// separate toggle someone has to remember to click. isPaid is still a
+// real column (still drives the Paid/Unpaid badge in
+// project-documents-section.tsx and the dashboard's unpaid-invoice
+// flag) — it's just no longer settable from here.
+//
 // Refresh (Phase 16): re-applies today's date and the currently
 // designated payer's fields onto this document in place — for when the
 // payer changed, or the same payer updated their payment info/signature/
@@ -41,36 +50,9 @@ export function DocumentToolbar({
 }) {
   const router = useRouter();
   const { openProject } = useMilestonesDialog();
-  const [isTogglingPaid, setIsTogglingPaid] = useState(false);
-  const [paidError, setPaidError] = useState<string | null>(null);
   const [isRefreshDialogOpen, setIsRefreshDialogOpen] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
-
-  // Status tracking (phases-plan 3.4): one endpoint per direction
-  // (mark-paid / mark-unpaid), matching the archive/unarchive pattern —
-  // see those routes for why.
-  async function handleTogglePaid() {
-    setIsTogglingPaid(true);
-    setPaidError(null);
-    try {
-      const action = document.isPaid ? "mark-unpaid" : "mark-paid";
-      const res = await fetch(
-        `/api/projects/${projectId}/documents/${document.id}/${action}`,
-        { method: "POST" },
-      );
-      if (!res.ok) {
-        const body = await res.json().catch(() => null);
-        setPaidError(body?.error ?? "Something went wrong. Try again.");
-        return;
-      }
-      router.refresh();
-    } catch {
-      setPaidError("Couldn't reach the server. Check your connection and try again.");
-    } finally {
-      setIsTogglingPaid(false);
-    }
-  }
 
   async function handleRefresh() {
     setIsRefreshing(true);
@@ -124,25 +106,6 @@ export function DocumentToolbar({
           Back
         </Button>
         <div className="flex items-center gap-2">
-          {document.type === "invoice" && (
-            <Button
-              variant={document.isPaid ? "outline" : "default"}
-              size="sm"
-              onClick={handleTogglePaid}
-              disabled={isTogglingPaid}
-            >
-              {document.isPaid ? (
-                <CircleX className="size-4" aria-hidden="true" />
-              ) : (
-                <CircleCheck className="size-4" aria-hidden="true" />
-              )}
-              {isTogglingPaid
-                ? "Updating..."
-                : document.isPaid
-                  ? "Mark unpaid"
-                  : "Mark as paid"}
-            </Button>
-          )}
           <Button
             variant="outline"
             size="sm"
@@ -168,9 +131,6 @@ export function DocumentToolbar({
           </Button>
         </div>
       </div>
-      {paidError && (
-        <p className="text-[var(--text-sm)] text-[var(--destructive)]">{paidError}</p>
-      )}
 
       <Dialog open={isRefreshDialogOpen} onOpenChange={setIsRefreshDialogOpen}>
         <DialogContent className="max-w-[480px] p-6">

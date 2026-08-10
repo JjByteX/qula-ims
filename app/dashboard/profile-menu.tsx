@@ -49,7 +49,7 @@ export function ProfileMenu({ user }: { user: ProfileMenuUser }) {
           aria-label={`Open profile menu for ${fullName}`}
           className="rounded-full outline-none transition-opacity hover:opacity-80 focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
         >
-          <Avatar>
+          <Avatar className="border border-[var(--border)]">
             {user.profilePictureUrl && <AvatarImage src={user.profilePictureUrl} alt="" />}
             <AvatarFallback>{initials}</AvatarFallback>
           </Avatar>

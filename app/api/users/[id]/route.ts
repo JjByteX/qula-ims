@@ -122,6 +122,14 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         // minor storage cost, not worth failing the whole edit over.
       });
     }
+  } else if (formData.get("removeProfilePicture") === "true" && target.profilePictureUrl) {
+    // Explicit removal (the crop dialog's "Remove picture" action) —
+    // a separate flag from just omitting profilePicture, since omitting
+    // it already means "leave the current picture alone" for a normal
+    // text-only save.
+    const oldKey = target.profilePictureUrl.replace(`${getPublicUrl("")}`, "");
+    await deleteFile(oldKey).catch(() => {});
+    profilePictureUrl = null;
   }
 
   // Payment QR code and signature (docs/phases-plan-revision-1.md Phase
@@ -144,6 +152,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const oldKey = target.paymentQrCodeUrl.replace(`${getPublicUrl("")}`, "");
       await deleteFile(oldKey).catch(() => {});
     }
+  } else if (formData.get("removePaymentQrCode") === "true" && target.paymentQrCodeUrl) {
+    const oldKey = target.paymentQrCodeUrl.replace(`${getPublicUrl("")}`, "");
+    await deleteFile(oldKey).catch(() => {});
+    paymentQrCodeUrl = null;
   }
 
   let paymentSignatureUrl = target.paymentSignatureUrl;
@@ -162,6 +174,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const oldKey = target.paymentSignatureUrl.replace(`${getPublicUrl("")}`, "");
       await deleteFile(oldKey).catch(() => {});
     }
+  } else if (formData.get("removePaymentSignature") === "true" && target.paymentSignatureUrl) {
+    const oldKey = target.paymentSignatureUrl.replace(`${getPublicUrl("")}`, "");
+    await deleteFile(oldKey).catch(() => {});
+    paymentSignatureUrl = null;
   }
 
   const [updated] = await db

@@ -215,7 +215,7 @@ export function ActivityLogList({
       )}
 
       {entries.length > 0 && (
-        <Card className="flex flex-col divide-y divide-[var(--border)] overflow-hidden">
+        <Card className="flex flex-col divide-y divide-[var(--border-soft)] overflow-hidden">
           {entries.map((entry) => {
             const detail = formatDetail(entry.action, entry.detail);
             return (

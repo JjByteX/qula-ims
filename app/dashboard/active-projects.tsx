@@ -44,7 +44,7 @@ export function ActiveProjects({ projects }: { projects: ActiveProjectRow[] }) {
             No active projects yet.
           </p>
         ) : (
-          <div className="flex min-h-0 flex-1 flex-col divide-y divide-[var(--border)] overflow-y-auto">
+          <div className="flex min-h-0 flex-1 flex-col divide-y divide-[var(--border-soft)] overflow-y-auto">
             {projects.map((project) => (
               <button
                 key={project.id}

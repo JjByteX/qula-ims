@@ -311,7 +311,7 @@ export function BudgetSection({
 
             {isEditingSplit ? (
               <div className="flex flex-col gap-4">
-                <div className="flex flex-col divide-y divide-[var(--border)]">
+                <div className="flex flex-col divide-y divide-[var(--border-soft)]">
                   {splitterState.splits.map((split) => (
                     <div
                       key={split.userId}
@@ -532,7 +532,7 @@ export function BudgetSection({
               No expenses recorded yet.
             </p>
           ) : (
-            <div className="flex flex-col divide-y divide-[var(--border)]">
+            <div className="flex flex-col divide-y divide-[var(--border-soft)]">
               {expenses.map((expense) =>
                 editingExpenseId === expense.id ? (
                   <div key={expense.id} className="py-4 first:pt-0 last:pb-0">

@@ -138,7 +138,9 @@ export default async function DashboardPage() {
         <div className="flex shrink-0 items-center justify-between gap-4 pt-10">
           {/* eslint-disable-next-line @next/next/no-img-element -- static
               brand asset from /public, not a next/image candidate */}
-          <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto self-start" />
+          <a href="/dashboard" aria-label="Go to dashboard">
+            <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto self-start" />
+          </a>
           <div className="flex items-center gap-2">
             <ProfileMenu
               user={{

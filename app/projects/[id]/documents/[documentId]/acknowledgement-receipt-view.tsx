@@ -7,18 +7,13 @@ export function AcknowledgementReceiptView({ document }: { document: ProjectDocu
     <div className={styles.page}>
       <h1 className={styles.title}>ACKNOWLEDGEMENT RECEIPT</h1>
 
-      {/* Received From / Attention (docs/phases-plan-revision-2.md Phase
-          13) sits directly under the document title now, ahead of the
-          receipt's own meta block — same reasoning and layout as the
-          matching Billed To block on invoice-view.tsx. */}
-      <div className={styles.billedToBlock}>
-        <div className={styles.metaLabel}>Received From</div>
-        <div>{document.receivedFromName}</div>
-        {document.receivedFromAttention && (
-          <div>Attention: {document.receivedFromAttention}</div>
-        )}
-      </div>
-
+      {/* Receipt No./Date meta block sits directly under the document
+          title (matches the client's real template — see the
+          reference screenshot: "Received From" is a row inside the
+          table below, not a separate block up here the way Billed To
+          sits on invoice-view.tsx). Receipt No. is generated server-
+          side, once, at creation time (lib/documents/numbering.ts) —
+          never hand-typed. */}
       <div className={styles.metaBlock}>
         <div>
           <span className={styles.metaLabel}>Receipt No.: </span>
@@ -35,6 +30,18 @@ export function AcknowledgementReceiptView({ document }: { document: ProjectDocu
       <table className={styles.table}>
         <tbody>
           <tr>
+            <td>Received From</td>
+            <td>
+              {document.receivedFromName}
+              {document.receivedFromAttention && (
+                <>
+                  <br />
+                  Attention: {document.receivedFromAttention}
+                </>
+              )}
+            </td>
+          </tr>
+          <tr>
             <td>Project</td>
             <td>{document.title}</td>
           </tr>
@@ -49,6 +56,12 @@ export function AcknowledgementReceiptView({ document }: { document: ProjectDocu
             <td>{document.paymentPurpose}</td>
           </tr>
           <tr>
+            {/* Remaining Balance is always derived — sum of all
+                milestone prices on the project minus sum of milestones
+                already "done" (lib/documents/balance.ts) — recomputed
+                at creation, on every edit, and by Refresh. Never a
+                typed value, so what's on screen can't drift from the
+                project's real numbers. */}
             <td>Remaining Balance</td>
             <td>₱{formatPesoAmount(document.remainingBalance ?? "0")}</td>
           </tr>
@@ -67,31 +80,33 @@ export function AcknowledgementReceiptView({ document }: { document: ProjectDocu
         <tbody>
           <tr>
             <td>
+              {document.receivedByName}
+              <br />
+              {document.receivedByTitle}
               {/* Signature (docs/phases-plan-revision-2.md Phase 16) —
                   the designated payer's signature image, snapshotted
                   onto document.receivedBySignatureUrl at creation/
                   refresh time so a later payer change or profile edit
-                  can't alter a document that already went out. Shown
-                  above the printed signature line rather than replacing
-                  it — same qrImage sizing as the invoice's signature
-                  block, just constrained to this table cell's width.
-                  No fallback when absent: an AR created before any
-                  payer had a signature on file, or before Phase 16
-                  existed, simply shows the blank line for a hand
-                  signature, same as always. Only this side (the payer)
-                  gets an image — the client's signature (right column)
-                  is always in-person, never a stored image. */}
+                  can't alter a document that already went out. Sits
+                  directly above the printed line (not up near the name/
+                  title) with a small negative bottom margin
+                  (styles.signatureImage) so the ink reads as sitting on
+                  the line, the way an actual signature would, instead
+                  of floating disconnected from it. No fallback when
+                  absent: an AR created before any payer had a
+                  signature on file, or before Phase 16 existed, simply
+                  shows the blank line for a hand signature, same as
+                  always. Only this side (the payer) gets an image — the
+                  client's signature (right column) is always in-person,
+                  never a stored image. */}
               {document.receivedBySignatureUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={document.receivedBySignatureUrl}
                   alt="Signature"
-                  className={styles.qrImage}
+                  className={styles.signatureImage}
                 />
               )}
-              {document.receivedByName}
-              <br />
-              {document.receivedByTitle}
               <div className={styles.signatureLine}>Signature</div>
             </td>
             <td>

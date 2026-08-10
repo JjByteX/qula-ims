@@ -11,6 +11,8 @@ import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
 import { amountToWords } from "@/lib/documents/amount-to-words";
 import { getDesignatedPayer, getInvoicePayerFields, getArPayerFields } from "@/lib/documents/payer-fields";
+import { generateDocumentNumber } from "@/lib/documents/numbering";
+import { computeArRemainingBalance } from "@/lib/documents/balance";
 
 // Documents live on the project page (phases-plan 3.2), open to any
 // signed-in user — same rule as the project itself.
@@ -144,13 +146,23 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const designatedPayer = await getDesignatedPayer();
 
   if (body.type === "invoice") {
+    // Invoice No. (lib/documents/numbering.ts) — mirrors the AR branch's
+    // own generateDocumentNumber("ar") call below. This was previously
+    // missing here, so every invoice created through this route (as
+    // opposed to the db/seed.ts script, which hardcodes its own
+    // INV-2026-00N values) saved with a blank documentNumber instead of
+    // the next one in sequence.
+    autoFilled.documentNumber = await generateDocumentNumber("invoice");
     autoFilled.dueDate = todayIso;
     autoFilled.agreementDate = todayIso;
 
     // billedToName/billedToAttention are always about the client being
     // billed, not who's paid, so these stay sourced from the project's
     // Phase 8 defaults regardless of whether a designated payer exists.
-    if (project.billedToName) autoFilled.billedToName = project.billedToName;
+    // billedToName is mandatory on every project (db/schema/projects.ts
+    // .notNull(), enforced at the form too by projectSchema), so this is
+    // never actually conditional — only billedToAttention can be unset.
+    autoFilled.billedToName = project.billedToName;
     if (project.billedToAttention) autoFilled.billedToAttention = project.billedToAttention;
 
     // Payment block + signatory (docs/phases-plan-revision-2.md Phase
@@ -166,6 +178,19 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       .where(eq(milestones.projectId, projectId));
     autoFilled.totalProjectCost = totalProjectCost;
   } else {
+    // Received From / Attention — same client info as invoice's
+    // billedToName/billedToAttention above, just under the AR's own
+    // field names. This was previously missing here, so every AR
+    // created through this route saved with a blank "Received From"
+    // row instead of the project's billed-to client (see the invoice
+    // branch above and db/seed.ts's seedFnbProject, which both already
+    // treat billedToName/billedToAttention as the one source for who
+    // the client being billed/received-from is). billedToName is
+    // mandatory on every project, same as the invoice branch above, so
+    // this is unconditional too — only receivedFromAttention can be unset.
+    autoFilled.receivedFromName = project.billedToName;
+    if (project.billedToAttention) autoFilled.receivedFromAttention = project.billedToAttention;
+
     // AR payer-linked fields (docs/phases-plan-revision-2.md Phase 16):
     // receivedByName/receivedByTitle/receivedBySignatureUrl now come
     // from the designated payer, same live link invoices already had —
@@ -175,6 +200,18 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     // payer designated yet, these are simply left blank, same as any
     // other field nothing has filled in yet.
     Object.assign(autoFilled, getArPayerFields(designatedPayer));
+
+    // Receipt No. and Remaining Balance are always generated/derived for
+    // an AR, never taken from the request — same "override wins" spread
+    // order below would otherwise let a caller supply its own value for
+    // either, which defeats the point of auto-generating them. These are
+    // deliberately applied to autoFilled (not appended after
+    // fieldsParsed.data) and fieldsParsed.data can no longer contain
+    // these keys anyway since arDocumentSchema.partial() no longer
+    // includes documentNumber/remainingBalance
+    // (lib/validation/documents.ts).
+    autoFilled.documentNumber = await generateDocumentNumber("ar");
+    autoFilled.remainingBalance = await computeArRemainingBalance(projectId, milestone.id);
   }
 
   const [created] = await db
@@ -199,6 +236,43 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     targetId: created.id,
     detail: { projectId, milestoneId: milestone.id, title: created.title },
   });
+
+  // An AR is the confirmation that payment was received (Client-
+  // Requests.md — "it will be paid once the acknowledgement receipt is
+  // made"), so creating one auto-marks this milestone's invoice as paid
+  // instead of relying on someone to separately toggle it. This replaces
+  // the old manual "Mark as paid" button on the invoice toolbar — see
+  // app/projects/[id]/documents/[documentId]/document-toolbar.tsx.
+  // mark-paid/route.ts's own idempotent-if-already-paid check isn't
+  // needed here since this only ever runs once per AR (the existing-
+  // document short-circuit above prevents a second AR for the same
+  // milestone), but the same "only invoices, only if not already paid"
+  // guard still applies in case no invoice was ever generated for this
+  // milestone.
+  if (created.type === "ar") {
+    const [invoice] = await db
+      .select()
+      .from(projectDocuments)
+      .where(
+        and(eq(projectDocuments.milestoneId, milestone.id), eq(projectDocuments.type, "invoice")),
+      )
+      .limit(1);
+
+    if (invoice && !invoice.isPaid) {
+      await db
+        .update(projectDocuments)
+        .set({ isPaid: true, updatedAt: new Date() })
+        .where(eq(projectDocuments.id, invoice.id));
+
+      await logActivity({
+        actorUserId: auth.user.id,
+        action: "invoice.marked_paid",
+        targetType: "document",
+        targetId: invoice.id,
+        detail: { projectId, title: invoice.title, reason: "ar_created" },
+      });
+    }
+  }
 
   return NextResponse.json({ document: created });
 }

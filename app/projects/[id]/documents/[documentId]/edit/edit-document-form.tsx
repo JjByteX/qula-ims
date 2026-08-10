@@ -7,9 +7,13 @@ import { DocumentForm } from "../document-form";
 
 // Converts nullable DB columns to the string defaults react-hook-form
 // expects, and only sends the fields the document's type schema covers.
+// documentNumber (both types) and remainingBalance (AR) are no longer
+// part of this — documentNumber is generated once server-side and never
+// edited (lib/documents/numbering.ts), and remainingBalance is always
+// recomputed server-side (lib/documents/balance.ts), so neither belongs
+// in a form default anymore.
 function toDefaultValues(document: ProjectDocument) {
   const shared = {
-    documentNumber: document.documentNumber ?? "",
     documentDate: document.documentDate ?? "",
     amount: document.amount ?? "",
     amountInWords: document.amountInWords ?? "",
@@ -21,7 +25,6 @@ function toDefaultValues(document: ProjectDocument) {
       ...shared,
       receivedFromName: document.receivedFromName ?? "",
       receivedFromAttention: document.receivedFromAttention ?? "",
-      remainingBalance: document.remainingBalance ?? "",
       receivedByName: document.receivedByName ?? "",
       receivedByTitle: document.receivedByTitle ?? "",
     };
@@ -44,7 +47,6 @@ function toDefaultValues(document: ProjectDocument) {
     // an uncontrolled->controlled switch.
     receivedFromName: "",
     receivedFromAttention: "",
-    remainingBalance: "",
     receivedByName: "",
     receivedByTitle: "",
   };

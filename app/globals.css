@@ -50,8 +50,13 @@
   --success-foreground: var(--qula-off-white);
 
   --border: color-mix(in srgb, var(--qula-charcoal) 12%, transparent);
+  --border-soft: color-mix(in srgb, var(--qula-charcoal) 7%, transparent); /* lighter than --border — used for table row dividers, distinct from the card's outer frame */
   --input: color-mix(in srgb, var(--qula-charcoal) 16%, transparent);
   --ring: var(--qula-gold);
+
+  /* Table layout tokens (auto-fit pagination) */
+  --height-table-row: 41px; /* px-4 py-2 text-base row ≈ 41px tall */
+  --height-table-header: 37px; /* px-4 py-2 text-sm header ≈ 37px tall */
 
   /* Radius tokens - only two values permitted per ux-ui-guidelines */
   --radius-sm: 8px; /* buttons, inputs, cards, containers */

@@ -14,21 +14,29 @@ const dateString = z
 
 // Acknowledgement Receipt (phases-plan 3.2). Mirrors the client's real AR
 // template field for field: received from (company + contact), project,
-// amount received (+ words), payment purpose, remaining balance, and the
-// two signature-block names. receivedBySignatureUrl (Phase 16) isn't part
-// of this text-field schema — same reasoning as invoice's signatureUrl/
-// qrCodeUrl below: it's a snapshotted image URL set by auto-fill/refresh
+// amount received (+ words), payment purpose, and the two signature-block
+// names. receivedBySignatureUrl (Phase 16) isn't part of this text-field
+// schema — same reasoning as invoice's signatureUrl/qrCodeUrl below: it's
+// a snapshotted image URL set by auto-fill/refresh
 // (app/api/projects/[id]/documents/route.ts and .../refresh/route.ts),
 // not a value someone types into the create/edit form.
+//
+// documentNumber and remainingBalance are deliberately NOT in this
+// schema anymore. documentNumber is generated server-side, once, at
+// creation (lib/documents/numbering.ts) and never editable afterward —
+// same "fixed once issued" rule the rest of a document's identity
+// follows. remainingBalance is always derived (lib/documents/balance.ts:
+// sum of all milestone prices minus sum of milestones already "done")
+// and recomputed on every create/PATCH/refresh rather than accepted from
+// the request, so it can never drift out of sync with the project's
+// actual milestones.
 export const arDocumentSchema = z.object({
-  documentNumber: z.string().trim().min(1, "Receipt number is required"),
   documentDate: dateString,
   receivedFromName: z.string().trim().min(1, "Received from is required"),
   receivedFromAttention: z.string().trim().optional(),
   amount: moneyString,
   amountInWords: z.string().trim().min(1, "Amount in words is required"),
   paymentPurpose: z.string().trim().min(1, "Payment purpose is required"),
-  remainingBalance: moneyString,
   receivedByName: z.string().trim().min(1, "Received by is required"),
   receivedByTitle: z.string().trim().min(1, "Title is required"),
 });

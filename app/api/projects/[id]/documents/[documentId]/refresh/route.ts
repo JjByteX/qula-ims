@@ -5,6 +5,7 @@ import { projectDocuments } from "@/db/schema";
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
 import { getDesignatedPayer, getInvoicePayerFields, getArPayerFields } from "@/lib/documents/payer-fields";
+import { computeArRemainingBalance } from "@/lib/documents/balance";
 
 // Refresh (docs/phases-plan-revision-2.md Phase 16): re-applies today's
 // date and the *currently* designated payer's fields onto an existing
@@ -54,6 +55,14 @@ export async function POST(
     Object.assign(refreshed, await getInvoicePayerFields(designatedPayer));
   } else {
     Object.assign(refreshed, getArPayerFields(designatedPayer));
+    // Remaining Balance is always derived (lib/documents/balance.ts), so
+    // Refresh recomputes it too — a milestone price change elsewhere on
+    // the project since this AR was created/last refreshed should be
+    // reflected here, same as the payer fields above are.
+    refreshed.remainingBalance = await computeArRemainingBalance(
+      projectId,
+      document.milestoneId,
+    );
   }
 
   const [updated] = await db

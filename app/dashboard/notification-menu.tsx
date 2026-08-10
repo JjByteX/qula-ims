@@ -78,7 +78,7 @@ export function NotificationMenu({
               Nothing pending.
             </p>
           ) : (
-            <div className="flex max-h-[360px] flex-col divide-y divide-[var(--border)] overflow-y-auto">
+            <div className="flex max-h-[360px] flex-col divide-y divide-[var(--border-soft)] overflow-y-auto">
               {registrations.map((registration) => (
                 <Link
                   key={registration.id}

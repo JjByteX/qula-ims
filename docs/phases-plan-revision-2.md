@@ -612,6 +612,72 @@ notification it was meant to configure was never built on top of it.
 - `app/api/settings/designated-payer/route.ts` — its own dedicated
   route, never touched this setting to begin with.
 
+## Phase 21, Profile Edit Moves Into Settings
+
+### 21.1 Problem
+Settings only ever linked out to a separate page (`/users/[id]/edit`) to
+edit your own profile — a click that landed on a page with just one
+480px-wide card and a lot of empty margin around it. With the
+notification lead time card gone (Phase 20), Settings itself was down to
+one card too, looking sparse for what should be the app's main
+preferences page.
+
+### 21.2 What changed
+- `app/settings/page.tsx`: rebuilt on the dashboard's own layout
+  pattern — `max-w-[1600px]`, full viewport height, a Back button (fixed
+  destination `/dashboard`, matching the invoice/AR toolbar's Back
+  shape, since Settings only has the one real entry point). Two-column
+  body: the payer card in a narrower 360px column, the profile edit form
+  in the larger remaining width, same asymmetric-column spirit as the
+  dashboard's Budget-gets-the-tall-column grid rather than an even
+  50/50 split.
+- `EditProfileForm` (`app/users/[id]/edit/edit-profile-form.tsx`): new
+  optional `stayOnPage` prop. When true: the card drops its old
+  `max-w-[480px]` (full width instead, since Settings' own column now
+  controls the size), saving shows an inline "Profile saved." message
+  and calls `router.refresh()` instead of navigating to the profile-view
+  page, and the Cancel button is hidden (Settings' page-level Back
+  covers that now). The prop defaults to false/undefined so the
+  standalone page's behavior is unchanged when it's still used for that
+  case (see below).
+- `app/users/[id]/edit/page.tsx`: now redirects to `/settings` when the
+  signed-in user is editing their own profile (`currentUser.id === id`),
+  same redirect pattern this page already used for unauthorized access.
+  What's left here is a superadmin editing someone else's profile — the
+  form's `stayOnPage` prop is never passed on this route, so that flow
+  is completely unchanged: same narrow card, same redirect-to-profile-
+  view on save, same Cancel button.
+- `app/users/[id]/page.tsx`: the Edit button now links to `/settings`
+  when viewing your own profile, and to `/users/[id]/edit` as before
+  when a superadmin is viewing someone else's.
+
+### 21.3 What doesn't change
+- `/users/[id]/edit` for a superadmin editing someone else — same page,
+  same form, same narrow width, same behavior as before this phase.
+- `app/api/users/[id]/route.ts` — the PATCH endpoint both flows submit
+  to is untouched; only the two callers' post-save behavior differs via
+  `stayOnPage`.
+- The designated-payer card and its own route — unaffected, just
+  relocated into the new two-column layout.
+
+### 21.4 Picture/QR/signature: click the image itself, no separate button
+All three image uploads (profile picture, payment QR code, payment
+signature) used to pair the image/placeholder with a separate
+label-styled button next to it ("Change picture" / "Upload QR code" /
+"Upload signature") plus a hint line spelling out the accepted file
+types and size limit. Replaced with a single click target: the image or
+placeholder itself is the `<label>` (labels open their linked file
+input natively, no extra JS needed), with a dark overlay and upload icon
+that fades in on hover as the only affordance that it's clickable — no
+separate button, no visible hint text. The hint text is dropped
+entirely rather than hidden until hover; file pickers already surface
+accepted types on their own, and the 2MB limit only matters in the rare
+case someone exceeds it, which the existing inline error message still
+covers when that happens. Each trigger keeps a `sr-only` accessible name
+("Change profile picture" / "Upload QR code" / "Upload signature") so
+the control still has a name for screen readers now that it has no
+visible text.
+
 ## Out of Scope
 
 - Multiple simultaneous designated payers, or a history of past payers

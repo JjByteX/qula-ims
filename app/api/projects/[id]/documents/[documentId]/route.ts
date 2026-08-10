@@ -6,6 +6,7 @@ import { arDocumentSchema, invoiceDocumentSchema } from "@/lib/validation/docume
 import { authorizeUser } from "@/lib/auth/authorize";
 import { logActivity } from "@/lib/activity/log";
 import { diffFields } from "@/lib/activity/diff";
+import { computeArRemainingBalance } from "@/lib/documents/balance";
 
 // Edits a generated document's fields (phases-plan 3.2). isPaid is a
 // separate toggle endpoint (phases-plan 3.4), not part of this general
@@ -37,9 +38,24 @@ export async function PATCH(
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
+  // remainingBalance isn't part of arDocumentSchema anymore (it's always
+  // derived, lib/documents/balance.ts) so it never arrives in
+  // parsed.data — recomputed here on every AR save instead, since an
+  // edit elsewhere on the project (e.g. a milestone price change) could
+  // change what it should be even if this document's own fields didn't.
+  // documentNumber similarly isn't in the schema, so it's simply absent
+  // from parsed.data and the existing value on the row is left alone.
+  const derivedFields: Record<string, string> = {};
+  if (existing.type === "ar") {
+    derivedFields.remainingBalance = await computeArRemainingBalance(
+      projectId,
+      existing.milestoneId,
+    );
+  }
+
   const [updated] = await db
     .update(projectDocuments)
-    .set({ ...parsed.data, updatedAt: new Date() })
+    .set({ ...parsed.data, ...derivedFields, updatedAt: new Date() })
     .where(eq(projectDocuments.id, documentId))
     .returning();
 

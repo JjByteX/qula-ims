@@ -127,12 +127,20 @@ export function DocumentForm({
         </div>
       )}
 
-      <Field
-        id="documentNumber"
-        label={type === "ar" ? "Receipt No." : "Invoice No."}
-        error={errors.documentNumber?.message}
-        {...register("documentNumber")}
-      />
+      {/* Receipt No. is no longer a form field for ARs — it's generated
+          server-side at creation time (lib/documents/numbering.ts) and
+          never editable afterward, same as an invoice number would be
+          for a real accounting system. Invoices keep their manual
+          number field below for now; only AR numbering was in scope for
+          this change. */}
+      {type === "invoice" && (
+        <Field
+          id="documentNumber"
+          label="Invoice No."
+          error={(errors as Record<string, { message?: string }>).documentNumber?.message}
+          {...register("documentNumber" as keyof DocumentFormValues)}
+        />
+      )}
 
       <div className="grid grid-cols-2 gap-4">
         <Field
@@ -209,12 +217,11 @@ export function DocumentForm({
 
       {type === "ar" ? (
         <>
-          <Field
-            id="remainingBalance"
-            label="Remaining Balance"
-            error={errors.remainingBalance?.message}
-            {...register("remainingBalance")}
-          />
+          {/* Remaining Balance is no longer a typed field — it's always
+              derived (lib/documents/balance.ts: sum of all milestone
+              prices minus sum of milestones already "done") and
+              recomputed server-side on every create/edit/refresh, so
+              there's nothing here to edit. */}
           <div className="grid grid-cols-2 gap-4">
             <Field
               id="receivedByName"

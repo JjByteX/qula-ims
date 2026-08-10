@@ -19,6 +19,12 @@ import {
   FileText,
   Receipt,
 } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -161,6 +167,9 @@ export function MilestonesSection({
   const [documents, setDocuments] = useState(initialDocuments);
   const [creatingDocFor, setCreatingDocFor] = useState<string | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+  const [undoTarget, setUndoTarget] = useState<Milestone | null>(null);
+  const [isUndoing, setIsUndoing] = useState(false);
+  const [undoError, setUndoError] = useState<string | null>(null);
 
   function hasDocument(milestoneId: string) {
     return documents.some((doc) => doc.milestoneId === milestoneId);
@@ -265,6 +274,30 @@ export function MilestonesSection({
     }
   }
 
+  async function handleUndo(milestone: Milestone) {
+    setIsUndoing(true);
+    setUndoError(null);
+    try {
+      const res = await fetch(`/api/projects/${projectId}/milestones/${milestone.id}/undo`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setUndoError(body?.error ?? "Something went wrong. Try again.");
+        return;
+      }
+      const { milestone: updated } = await res.json();
+      setMilestones((prev) => prev.map((m) => (m.id === updated.id ? updated : m)));
+      setDocuments((prev) => prev.filter((doc) => doc.milestoneId !== updated.id));
+      setUndoTarget(null);
+      router.refresh();
+    } catch {
+      setUndoError("Couldn't reach the server. Check your connection and try again.");
+    } finally {
+      setIsUndoing(false);
+    }
+  }
+
   async function handleDelete(milestone: Milestone) {
     setBusyId(milestone.id);
     setRowError(null);
@@ -365,7 +398,7 @@ export function MilestonesSection({
             No milestones yet.
           </p>
         ) : (
-          <div className="flex flex-col divide-y divide-[var(--border)]">
+          <div className="flex flex-col divide-y divide-[var(--border-soft)]">
             {milestones.map((milestone, index) =>
               editingId === milestone.id ? (
                 <div key={milestone.id} className="py-4 first:pt-0 last:pb-0">
@@ -435,7 +468,23 @@ export function MilestonesSection({
                         size="icon"
                         aria-label={milestone.status === "completed" ? "Reopen milestone" : "Mark milestone complete"}
                         disabled={busyId === milestone.id}
-                        onClick={() => handleToggleComplete(milestone)}
+                        onClick={() => {
+                          // Reopening a completed milestone that already
+                          // has an invoice/AR deletes those documents
+                          // (undo/route.ts) — confirm first, same
+                          // "confirm before destroying document data"
+                          // precedent as DocumentToolbar's Refresh
+                          // dialog. Completing (not yet done) and
+                          // reopening a milestone with no documents yet
+                          // are both non-destructive, so those still run
+                          // immediately as before.
+                          if (milestone.status === "completed" && hasDocument(milestone.id)) {
+                            setUndoError(null);
+                            setUndoTarget(milestone);
+                          } else {
+                            handleToggleComplete(milestone);
+                          }
+                        }}
                       >
                         {milestone.status === "completed" ? (
                           <CircleX className="size-4" aria-hidden="true" />
@@ -543,6 +592,37 @@ export function MilestonesSection({
           </span>
         </div>
       </CardContent>
+
+      <Dialog open={undoTarget !== null} onOpenChange={(open) => !open && setUndoTarget(null)}>
+        <DialogContent className="max-w-[480px] p-6">
+          <DialogTitle>Mark &ldquo;{undoTarget?.title}&rdquo; as undone?</DialogTitle>
+          <DialogDescription>
+            This will delete the invoice and acknowledgement receipt for this milestone and
+            reopen it. This can&rsquo;t be undone.
+          </DialogDescription>
+          {undoError && (
+            <p className="text-[var(--text-sm)] text-[var(--destructive)]">{undoError}</p>
+          )}
+          <div className="flex justify-end gap-2 pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setUndoTarget(null)}
+              disabled={isUndoing}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => undoTarget && handleUndo(undoTarget)}
+              disabled={isUndoing}
+            >
+              {isUndoing ? "Undoing..." : "Mark as undone"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

@@ -10,6 +10,7 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
+import { ProfileMenu } from "@/app/dashboard/profile-menu";
 
 // Profile view (phases-plan 1.7 / Client-Requests.md "Anyone can view any
 // profile"). Any signed-in user can view any profile — the self-or-
@@ -48,7 +49,24 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
 
   return (
     <main className="min-h-screen bg-[var(--background)] px-4 py-10">
-      <div className="mx-auto w-full max-w-[640px]">
+      <div className="mx-auto flex w-full max-w-[640px] flex-col gap-6">
+        {/* Same profile menu as the dashboard header, so Settings and
+            Logout stay reachable from this page too instead of only
+            from /dashboard. */}
+        <div className="flex items-center justify-between">
+          {/* eslint-disable-next-line @next/next/no-img-element -- static
+              brand asset from /public, not a next/image candidate */}
+          <a href="/dashboard" aria-label="Go to dashboard">
+            <img src="/qula-logo.svg" alt="Qula" className="h-8 w-auto self-start" />
+          </a>
+          <ProfileMenu
+            user={{
+              firstName: currentUser.firstName,
+              lastName: currentUser.lastName,
+              profilePictureUrl: currentUser.profilePictureUrl,
+            }}
+          />
+        </div>
         <Card className="rounded-[var(--radius-lg)]">
           <CardContent className="flex flex-col gap-6 p-6">
             <div className="flex items-start justify-between gap-4">
@@ -70,7 +88,13 @@ export default async function ProfilePage({ params }: { params: Promise<{ id: st
               </div>
 
               {canEdit && (
-                <Link href={`/users/${profile.id}/edit`}>
+                // Own profile now edits from Settings
+                // (docs/phases-plan-revision-2.md Phase 21) rather than
+                // this route's own /edit page — that page still exists
+                // and still handles a superadmin editing someone else's
+                // profile, which is the only remaining case that keeps
+                // linking there.
+                <Link href={currentUser.id === profile.id ? "/settings" : `/users/${profile.id}/edit`}>
                   <Button variant="outline" size="sm">
                     <Pencil className="size-4" aria-hidden="true" />
                     Edit

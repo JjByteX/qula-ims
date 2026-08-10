@@ -1,14 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { Plus, Pencil, Archive, ArchiveRestore, Save, X } from "lucide-react";
+import { Plus, Pencil, Archive, ArchiveRestore, Save, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   projectSchema,
   milestoneSchema,
@@ -16,6 +21,7 @@ import {
 } from "@/lib/validation/projects";
 import { CURRENCY_SYMBOL, formatCurrency } from "@/lib/currency";
 import { useMilestonesDialog } from "@/app/projects/milestones-dialog";
+import useAutoTableRows from "@/lib/hooks/useAutoTableRows";
 
 type Project = {
   id: string;
@@ -24,6 +30,11 @@ type Project = {
   status: "active" | "archived";
   billedToName?: string | null;
   billedToAttention?: string | null;
+  milestoneCount: number;
+  completedMilestoneCount: number;
+  nextMilestone?: { title: string; price: string };
+  hasUnpaidInvoice: boolean;
+  arPending: boolean;
 };
 
 // Create form: title + its first milestone (title, price) in one step —
@@ -249,7 +260,7 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
   const { openProject } = useMilestonesDialog();
   const [projects, setProjects] = useState(initialProjects);
   const [showArchived, setShowArchived] = useState(false);
-  const [isAdding, setIsAdding] = useState(false);
+  const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [archivingId, setArchivingId] = useState<string | null>(null);
   const [rowError, setRowError] = useState<string | null>(null);
@@ -267,8 +278,21 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
       throw new Error(body?.error ?? "Something went wrong.");
     }
     const { project } = await res.json();
-    setProjects((prev) => [project, ...prev]);
-    setIsAdding(false);
+    // Freshly created project has one milestone and nothing billed yet
+    // — same shape the table columns below expect, filled in directly
+    // rather than round-tripping through GET /api/projects again.
+    setProjects((prev) => [
+      {
+        ...project,
+        milestoneCount: 1,
+        completedMilestoneCount: 0,
+        nextMilestone: { title: data.milestone.title, price: data.milestone.price },
+        hasUnpaidInvoice: false,
+        arPending: false,
+      },
+      ...prev,
+    ]);
+    setIsAddOpen(false);
   }
 
   async function handleUpdate(id: string, data: ProjectInput) {
@@ -341,107 +365,238 @@ export function ProjectsSection({ initialProjects }: { initialProjects: Project[
 
   const visibleProjects = showArchived ? projects : projects.filter((p) => p.status === "active");
 
+  // Auto-fit pagination (ported from amkor-ims's DataTable/useAutoPageSize):
+  // the table measures its own available height and computes how many rows
+  // fit, instead of scrolling internally — a row that doesn't fit the
+  // viewport moves to the next page rather than being clipped or forcing a
+  // scrollbar.
+  const { containerRef: tableCardRef, rowsPerPage } = useAutoTableRows({ minRows: 3 });
+  const [page, setPage] = useState(1);
+  const totalPages = Math.max(1, Math.ceil(visibleProjects.length / rowsPerPage));
+  const currentPage = Math.min(page, totalPages);
+  const pagedProjects = visibleProjects.slice(
+    (currentPage - 1) * rowsPerPage,
+    currentPage * rowsPerPage,
+  );
+
+  // Reset to page 1 whenever the underlying row count or fitted row count
+  // changes (archived toggle, a project added/removed, or a resize that
+  // changes rowsPerPage) — otherwise the view could land on a now-empty
+  // trailing page.
+  useEffect(() => {
+    setPage(1);
+  }, [visibleProjects.length, rowsPerPage, showArchived]);
+
   return (
-    <Card className="rounded-[var(--radius-lg)]">
-      <CardContent className="flex flex-col gap-4 p-6">
-        <div className="flex items-center justify-between">
-          <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
-            Projects
-          </span>
-          <div className="flex items-center gap-2">
-            <Button variant="ghost" size="sm" onClick={toggleShowArchived} disabled={isLoadingArchived}>
-              {showArchived ? "Hide archived" : "Show archived"}
-            </Button>
-            {!isAdding && (
-              <Button variant="outline" size="sm" onClick={() => setIsAdding(true)}>
-                <Plus className="size-4" aria-hidden="true" />
-                Add project
-              </Button>
-            )}
-          </div>
+    // No Card wrapper (docs/ux-ui-guidelines.md "Tables inside cards":
+    // a table already implies a contained, structured block, so it's
+    // used directly in the layout instead of double-boxed inside a
+    // card). flex-1 min-h-0 still fills the remaining viewport height
+    // under the page header (app/projects/page.tsx) — same "this
+    // element grows, its own scroll area handles overflow" shape as
+    // the dashboard's cards, just without the outer card border.
+    <>
+    <div className="flex min-h-0 flex-1 flex-col gap-4">
+      <div className="flex shrink-0 items-center justify-between">
+        <span className="text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+          Projects
+        </span>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={toggleShowArchived} disabled={isLoadingArchived}>
+            {showArchived ? "Hide archived" : "Show archived"}
+          </Button>
+          <Button variant="default" size="sm" onClick={() => setIsAddOpen(true)}>
+            <Plus className="size-4" aria-hidden="true" />
+            Add project
+          </Button>
         </div>
+      </div>
 
-        {isAdding && (
-          <CreateProjectForm onSubmit={handleCreate} onCancel={() => setIsAdding(false)} />
-        )}
+      {rowError && (
+        <p className="shrink-0 text-[var(--text-sm)] text-[var(--destructive)]">{rowError}</p>
+      )}
 
-        {rowError && (
-          <p className="text-[var(--text-sm)] text-[var(--destructive)]">{rowError}</p>
-        )}
+      {visibleProjects.length === 0 ? (
+        <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
+          {showArchived ? "No projects yet." : "No active projects yet."}
+        </p>
+      ) : (
+        <>
+          {/* containerRef here is what useAutoTableRows measures: the
+              available height for card + pagination bar together. Rows
+              that don't fit move to the next page (see pagedProjects)
+              instead of causing this card to scroll internally. */}
+          <div
+            ref={tableCardRef}
+            className="flex min-h-0 flex-1 flex-col gap-2"
+          >
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-sm)] border border-[var(--border)] bg-[var(--card)]">
+              <table className="w-full table-fixed border-collapse text-left">
+                <colgroup>
+                  <col className="w-[24%]" />
+                  <col className="w-[32%]" />
+                  <col className="w-[20%]" />
+                  <col className="w-[12%]" />
+                  <col className="w-[12%]" />
+                </colgroup>
+                <thead className="shrink-0 border-b border-[var(--border)] bg-[var(--muted)]">
+                  <tr>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Project
+                    </th>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Next milestone
+                    </th>
+                    <th className="px-4 py-2 text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Milestones
+                    </th>
+                    <th className="px-4 py-2 text-right text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Total
+                    </th>
+                    <th className="px-4 py-2 text-right text-[var(--text-sm)] font-semibold text-[var(--muted-foreground)]">
+                      Actions
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-[var(--border-soft)]">
+                  {pagedProjects.map((project) =>
+                    editingId === project.id ? (
+                      <tr key={project.id}>
+                        <td colSpan={5} className="p-4">
+                          <EditProjectForm
+                            defaultValues={{
+                              title: project.title,
+                              billedToName: project.billedToName ?? "",
+                              billedToAttention: project.billedToAttention ?? "",
+                            }}
+                            onSubmit={(data) => handleUpdate(project.id, data)}
+                            onCancel={() => setEditingId(null)}
+                          />
+                        </td>
+                      </tr>
+                    ) : (
+                      <tr
+                        key={project.id}
+                        onClick={() => openProject(project.id)}
+                        className="cursor-pointer hover:bg-[var(--muted)]"
+                      >
+                        <td className="truncate px-4 py-2 align-top text-[var(--text-base)] text-[var(--foreground)]">
+                          {project.title}
+                        </td>
+                        <td className="px-4 py-2 align-top text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                          {project.nextMilestone ? (
+                            <span className="truncate">
+                              {project.nextMilestone.title} ({CURRENCY_SYMBOL}
+                              {formatCurrency(project.nextMilestone.price)})
+                            </span>
+                          ) : (
+                            <span>-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2 align-top text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                          {project.completedMilestoneCount}/{project.milestoneCount}{" "}
+                          {project.milestoneCount === 1 ? "milestone" : "milestones"}
+                        </td>
+                        <td className="px-4 py-2 text-right align-top text-[var(--text-base)] font-semibold text-[var(--foreground)]">
+                          {CURRENCY_SYMBOL}
+                          {formatCurrency(project.price)}
+                        </td>
+                        <td className="px-4 py-2 text-right align-top">
+                          <div className="flex items-center justify-end gap-0.5">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label="Edit project"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingId(project.id);
+                              }}
+                            >
+                              <Pencil className="size-4" aria-hidden="true" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              aria-label={project.status === "active" ? "Archive project" : "Restore project"}
+                              disabled={archivingId === project.id}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleArchiveToggle(project);
+                              }}
+                            >
+                              {project.status === "active" ? (
+                                <Archive className="size-4" aria-hidden="true" />
+                              ) : (
+                                <ArchiveRestore className="size-4" aria-hidden="true" />
+                              )}
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ),
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-        {visibleProjects.length === 0 && !isAdding ? (
-          <p className="py-4 text-center text-[var(--text-sm)] text-[var(--muted-foreground)]">
-            {showArchived ? "No projects yet." : "No active projects yet."}
-          </p>
-        ) : (
-          <div className="flex flex-col divide-y divide-[var(--border)]">
-            {visibleProjects.map((project) =>
-              editingId === project.id ? (
-                <div key={project.id} className="py-4 first:pt-0 last:pb-0">
-                  <EditProjectForm
-                    defaultValues={{
-                      title: project.title,
-                      billedToName: project.billedToName ?? "",
-                      billedToAttention: project.billedToAttention ?? "",
-                    }}
-                    onSubmit={(data) => handleUpdate(project.id, data)}
-                    onCancel={() => setEditingId(null)}
-                  />
-                </div>
-              ) : (
-                <button
-                  key={project.id}
-                  type="button"
-                  onClick={() => openProject(project.id)}
-                  className="flex items-center justify-between gap-4 py-4 text-left first:pt-0 last:pb-0 hover:bg-[var(--muted)]"
-                >
-                  <span className="text-[var(--text-base)] text-[var(--foreground)]">
-                    {project.title}
-                    {project.status === "archived" && (
-                      <span className="ml-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
-                        Archived
-                      </span>
-                    )}
+            {totalPages > 1 && (
+              <div className="flex shrink-0 items-center justify-between px-1">
+                <p className="text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                  Showing{" "}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {(currentPage - 1) * rowsPerPage + 1}
+                    {"\u2013"}
+                    {Math.min(currentPage * rowsPerPage, visibleProjects.length)}
+                  </span>{" "}
+                  of{" "}
+                  <span className="font-semibold text-[var(--foreground)]">
+                    {visibleProjects.length}
+                  </span>{" "}
+                  projects
+                </p>
+                <div className="flex items-center gap-1">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Previous page"
+                    disabled={currentPage === 1}
+                    onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  >
+                    <ChevronLeft className="size-4" aria-hidden="true" />
+                  </Button>
+                  <span className="px-2 text-[var(--text-sm)] text-[var(--muted-foreground)]">
+                    Page{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{currentPage}</span>{" "}
+                    of{" "}
+                    <span className="font-semibold text-[var(--foreground)]">{totalPages}</span>
                   </span>
-                  <div className="flex items-center gap-3">
-                    <span className="text-[var(--text-base)] font-semibold text-[var(--foreground)]">
-                      {CURRENCY_SYMBOL}
-                      {formatCurrency(project.price)}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label="Edit project"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingId(project.id);
-                      }}
-                    >
-                      <Pencil className="size-4" aria-hidden="true" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={project.status === "active" ? "Archive project" : "Restore project"}
-                      disabled={archivingId === project.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleArchiveToggle(project);
-                      }}
-                    >
-                      {project.status === "active" ? (
-                        <Archive className="size-4" aria-hidden="true" />
-                      ) : (
-                        <ArchiveRestore className="size-4" aria-hidden="true" />
-                      )}
-                    </Button>
-                  </div>
-                </button>
-              ),
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="Next page"
+                    disabled={currentPage === totalPages}
+                    onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  >
+                    <ChevronRight className="size-4" aria-hidden="true" />
+                  </Button>
+                </div>
+              </div>
             )}
           </div>
-        )}
-      </CardContent>
-    </Card>
+        </>
+      )}
+      </div>
+
+      <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+        <DialogContent className="max-w-[560px] p-6">
+          <DialogTitle>Add project</DialogTitle>
+          <DialogDescription>
+            Add the project and its first milestone. You can add more milestones later
+            from the project page.
+          </DialogDescription>
+          <CreateProjectForm onSubmit={handleCreate} onCancel={() => setIsAddOpen(false)} />
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
